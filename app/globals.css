@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Celda con texto truncado que se desplaza al hacer hover */
+.scroll-cell {
+  overflow: hidden;
+  white-space: nowrap;
+}
+.scroll-cell span {
+  display: inline-block;
+  white-space: nowrap;
+  transition: none;
+}
+.scroll-cell:hover span {
+  animation: marquee-scroll var(--marquee-dur, 3s) linear 0.4s 1 forwards;
+}
+@keyframes marquee-scroll {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(var(--marquee-end, -50%)); }
+}
+
+:root {
+  --background: #ffffff;
+  --foreground: #0a0a0a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
