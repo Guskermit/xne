@@ -5,6 +5,7 @@
 -- RESTART IDENTITY resetea los contadores bigserial.
 -- =============================================================================
 
+-- engagement_budget se excluye intencionalmente: los presupuestos sobreviven al borrado
 truncate table
   te.fact_time_charge,
   te.fact_expense,

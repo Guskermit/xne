@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { logout } from "../(auth)/actions";
 import UploadExcel from "./UploadExcel";
 import ProjectKpis from "./ProjectKpis";
+import ClearDatabaseButtonWithRefresh from "./ClearDatabaseButtonWithRefresh";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -48,7 +49,10 @@ export default async function DashboardPage() {
         <ProjectKpis />
       </Suspense>
 
-      <UploadExcel />
+      <div className="flex w-full max-w-7xl items-center gap-3">
+        <UploadExcel />
+        <ClearDatabaseButtonWithRefresh />
+      </div>
     </main>
   );
 }

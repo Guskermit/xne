@@ -19,12 +19,17 @@ function s(v: unknown): string | null {
 
 function num(v: unknown): number | null {
   if (v == null || v === "") return null;
-  // xlsx devuelve números reales para celdas numéricas → path rápido
+  // xlsx con raw:true devuelve JS numbers directamente → path rápido
   if (typeof v === "number") return isNaN(v) ? null : v;
-  let str = String(v).trim();
+  let str = String(v).trim().replace(/[€$\s]/g, "");
   if (!str) return null;
-  // Detectar separador decimal: si hay coma y punto, el que aparece más a la
-  // derecha es el decimal (cubre tanto "1.234,56" como "1,234.56")
+  // Notación contable: (1.234,56) → -1234.56
+  let sign = 1;
+  if (str.startsWith("(") && str.endsWith(")")) {
+    sign = -1;
+    str = str.slice(1, -1).trim();
+  }
+  // Detectar separador decimal: el que aparece más a la derecha es el decimal
   const lastDot   = str.lastIndexOf(".");
   const lastComma = str.lastIndexOf(",");
   if (lastComma > lastDot) {
@@ -35,7 +40,7 @@ function num(v: unknown): number | null {
     str = str.replace(/,/g, "");
   }
   const n = Number(str);
-  return isNaN(n) ? null : n;
+  return isNaN(n) ? null : sign * n;
 }
 
 function toDate(v: unknown): string | null {
@@ -112,6 +117,7 @@ export async function POST(req: NextRequest) {
   const sheetData = XLSX.utils.sheet_to_json<unknown[]>(ws, {
     header: 1,
     defval: null,
+    raw: true,    // devuelve números como JS numbers, no como strings formateados
   });
 
   if (sheetData.length <= HEADER_ROW_IDX) {
