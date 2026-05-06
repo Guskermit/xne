@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { logout } from "../(auth)/actions";
 import UploadExcel from "./UploadExcel";
 import ProjectKpis from "./ProjectKpis";
+import ClientKpis from "./ClientKpis";
 import ClearDatabaseButtonWithRefresh from "./ClearDatabaseButtonWithRefresh";
 
 export default async function DashboardPage() {
@@ -30,6 +31,24 @@ export default async function DashboardPage() {
           </button>
         </form>
       </div>
+
+      <Suspense
+        fallback={
+          <div className="w-full max-w-7xl space-y-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 p-4 h-20 animate-pulse"
+                />
+              ))}
+            </div>
+            <div className="rounded-xl border border-gray-200 dark:border-gray-700 h-48 animate-pulse bg-gray-100 dark:bg-gray-800" />
+          </div>
+        }
+      >
+        <ClientKpis />
+      </Suspense>
 
       <Suspense
         fallback={
