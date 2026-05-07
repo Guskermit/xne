@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import ScrollCell from "./ScrollCell";
 import BudgetCell from "./BudgetCell";
+import StatusCell from "./StatusCell";
 
 type EngagementKpi = {
   client_name: string;
@@ -15,15 +16,19 @@ type EngagementKpi = {
   gasto_total: number;
   ter?: number;
   budget?: number | null;
+  status?: string;
 };
 
 function ter(r: EngagementKpi): number {
   return r.ter ?? ((r.ansr ?? 0) + (r.gasto_total ?? 0));
 }
 
-async function fetchKpis(): Promise<EngagementKpi[]> {
+async function fetchKpis(fiscalYear?: number, activeOnly?: boolean): Promise<EngagementKpi[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("get_engagement_kpis");
+  const params: Record<string, unknown> = {};
+  if (fiscalYear) params.p_fiscal_year = fiscalYear;
+  if (activeOnly) params.p_active_only = true;
+  const { data, error } = await supabase.rpc("get_engagement_kpis", params);
   if (error) throw new Error(error.message);
   return (data as EngagementKpi[]) ?? [];
 }
@@ -107,10 +112,10 @@ function KpiCard({
 // ---------------------------------------------------------------------------
 // Main component (Server Component)
 // ---------------------------------------------------------------------------
-export default async function ProjectKpis() {
+export default async function ProjectKpis({ fiscalYear, activeOnly }: { fiscalYear?: number; activeOnly?: boolean }) {
   let rows: EngagementKpi[];
   try {
-    rows = await fetchKpis();
+    rows = await fetchKpis(fiscalYear, activeOnly);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Error desconocido";
     return (
@@ -168,6 +173,7 @@ export default async function ProjectKpis() {
               <th className="px-4 py-3 whitespace-nowrap">Cliente</th>
               <th className="px-4 py-3 whitespace-nowrap">Proyecto</th>
               <th className="px-4 py-3 whitespace-nowrap">Engagement</th>
+              <th className="px-4 py-3 whitespace-nowrap">Estado</th>
               <th className="px-4 py-3 text-right whitespace-nowrap">Horas</th>
               <th className="px-4 py-3 text-right whitespace-nowrap">NSR</th>
               <th className="px-4 py-3 text-right whitespace-nowrap">ANSR</th>
@@ -190,6 +196,7 @@ export default async function ProjectKpis() {
                 <ScrollCell text={r.client_name} className="text-gray-700 dark:text-gray-300 max-w-[180px]" />
                 <ScrollCell text={r.project_name} className="text-gray-500 dark:text-gray-400 max-w-[160px]" />
                 <ScrollCell text={r.engagement_name} className="font-medium text-gray-900 dark:text-gray-100 max-w-[200px]" />
+                <StatusCell engagementId={r.engagement_id} initialStatus={(r.status ?? "activo") as "activo" | "cerrado"} />
                 <td className="px-4 py-3 text-right tabular-nums text-gray-700 dark:text-gray-300">
                   {hrs.format(r.horas)}
                 </td>
@@ -228,7 +235,7 @@ export default async function ProjectKpis() {
           </tbody>
           <tfoot>
             <tr className="bg-gray-50 dark:bg-gray-900 border-t-2 border-gray-200 dark:border-gray-700 font-semibold text-gray-900 dark:text-gray-100">
-              <td className="px-4 py-3" colSpan={3}>
+              <td className="px-4 py-3" colSpan={4}>
                 Total
               </td>
               <td className="px-4 py-3 text-right tabular-nums">{hrs.format(totalHoras)}</td>

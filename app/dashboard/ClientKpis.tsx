@@ -15,9 +15,12 @@ type ClientKpi = {
   budget: number | null;
 };
 
-async function fetchClientKpis(): Promise<ClientKpi[]> {
+async function fetchClientKpis(fiscalYear?: number, activeOnly?: boolean): Promise<ClientKpi[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("get_client_kpis");
+  const params: Record<string, unknown> = {};
+  if (fiscalYear) params.p_fiscal_year = fiscalYear;
+  if (activeOnly) params.p_active_only = true;
+  const { data, error } = await supabase.rpc("get_client_kpis", params);
   if (error) throw new Error(error.message);
   return (data as ClientKpi[]) ?? [];
 }
@@ -70,10 +73,10 @@ function pctConsumedColor(terVal: number, budget: number | null): string {
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
-export default async function ClientKpis() {
+export default async function ClientKpis({ fiscalYear, activeOnly }: { fiscalYear?: number; activeOnly?: boolean }) {
   let rows: ClientKpi[];
   try {
-    rows = await fetchClientKpis();
+    rows = await fetchClientKpis(fiscalYear, activeOnly);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Error desconocido";
     return (
