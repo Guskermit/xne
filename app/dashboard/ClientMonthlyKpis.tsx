@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, Fragment, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/client";
 type ClientOption = {
   client_id: string;
   client_name: string;
+  budget?: number | null;
 };
 
 type MonthlyKpi = {
@@ -23,6 +24,184 @@ type MonthlyKpi = {
   ter: number;
 };
 
+type ForecastRow = {
+  mes: string;
+  horas: number;
+  ansr: number;
+  coste: number;
+  gastos: number;
+  exhaustionDate: string | null;
+};
+
+type ForecastResult = {
+  rows: ForecastRow[];
+  exhaustionDate: string | null;
+};
+
+type ForecastParams = {
+  headcount: number;
+  lastDate: string | null;
+};
+
+type ForecastEmployee = {
+  hoursPerDay: number;
+  ansrPerHour: number;
+  costPerHour: number;
+};
+
+type EmployeeRow = {
+  employee_gui: string;
+  employee_name: string | null;
+  rank_code: string | null;
+  horas: number;
+  nsr: number;
+  ansr: number;
+  coste_margen: number;
+  margen_bruto: number;
+};
+
+// ---------------------------------------------------------------------------
+// Forecast helpers
+// ---------------------------------------------------------------------------
+
+function parseLocalDate(s: string): Date {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function dateToKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function dateToMes(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function easterDate(year: number): [number, number] {
+  const a = year % 19, b = Math.floor(year / 100), c = year % 100;
+  const d = Math.floor(b / 4), e = b % 4;
+  const f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4), k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m2 = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m2 + 114) / 31);
+  const day = ((h + l - 7 * m2 + 114) % 31) + 1;
+  return [month, day];
+}
+
+function spanishHolidays(year: number): Set<string> {
+  const s = new Set<string>();
+  const add = (m: number, d: number) =>
+    s.add(`${year}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
+  add(1, 1); add(1, 6); add(5, 1); add(8, 15);
+  add(10, 12); add(11, 1); add(12, 6); add(12, 8); add(12, 25);
+  const [em, ed] = easterDate(year);
+  const gf = new Date(year, em - 1, ed);
+  gf.setDate(gf.getDate() - 2);
+  add(gf.getMonth() + 1, gf.getDate());
+  return s;
+}
+
+function buildForecast(params: {
+  employees: ForecastEmployee[];
+  lastDate: string | null;
+  gastosMensuales: number;
+  remaining: number;
+  fy: number;
+}): ForecastResult {
+  const { employees, lastDate, gastosMensuales, remaining, fy } = params;
+  const totalHPerDay       = employees.reduce((s, e) => s + e.hoursPerDay * (9 / 8.4), 0);
+  const totalHPerDayFri    = employees.reduce((s, e) => s + e.hoursPerDay * (6 / 8.4), 0);
+  const totalAnsrPerDay    = employees.reduce((s, e) => s + e.hoursPerDay * (9 / 8.4) * e.ansrPerHour, 0);
+  const totalAnsrPerDayFri = employees.reduce((s, e) => s + e.hoursPerDay * (6 / 8.4) * e.ansrPerHour, 0);
+  const totalCostePerDay    = employees.reduce((s, e) => s + e.hoursPerDay * (9 / 8.4) * e.costPerHour, 0);
+  const totalCostePerDayFri = employees.reduce((s, e) => s + e.hoursPerDay * (6 / 8.4) * e.costPerHour, 0);
+
+  if (remaining <= 0 || totalAnsrPerDay <= 0 || totalHPerDay === 0) {
+    return { rows: [], exhaustionDate: null };
+  }
+
+  const startDate = lastDate
+    ? (() => { const d = parseLocalDate(lastDate); d.setDate(d.getDate() + 1); return d; })()
+    : new Date(fy - 1, 6, 1);
+
+  const endDate = new Date(fy, 5, 30);
+  if (startDate > endDate) return { rows: [], exhaustionDate: null };
+
+  const holidaysByYear = new Map<number, Set<string>>();
+  const getHolidays = (year: number) => {
+    if (!holidaysByYear.has(year)) holidaysByYear.set(year, spanishHolidays(year));
+    return holidaysByYear.get(year)!;
+  };
+
+  const workingDaysPerMes = new Map<string, number>();
+  {
+    const tmp = new Date(startDate);
+    while (tmp <= endDate) {
+      const dow = tmp.getDay();
+      if (dow !== 0 && dow !== 6 && !getHolidays(tmp.getFullYear()).has(dateToKey(tmp))) {
+        const mes = dateToMes(tmp);
+        workingDaysPerMes.set(mes, (workingDaysPerMes.get(mes) ?? 0) + 1);
+      }
+      tmp.setDate(tmp.getDate() + 1);
+    }
+  }
+
+  const buckets = new Map<string, { horas: number; ansr: number; coste: number; gastos: number; exhaustionDate: string | null }>();
+  let accBurn = 0;
+  let exhaustionDate: string | null = null;
+
+  const cur = new Date(startDate);
+  outer: while (cur <= endDate) {
+    const dow = cur.getDay();
+    if (dow !== 0 && dow !== 6) {
+      const key = dateToKey(cur);
+      if (!getHolidays(cur.getFullYear()).has(key)) {
+        const hoursToday = dow === 5 ? totalHPerDayFri : totalHPerDay;
+        const ansrToday  = dow === 5 ? totalAnsrPerDayFri : totalAnsrPerDay;
+        const costeToday = dow === 5 ? totalCostePerDayFri : totalCostePerDay;
+        const mes = dateToMes(cur);
+        const wdInMes = workingDaysPerMes.get(mes) ?? 1;
+        const gastosToday = gastosMensuales / wdInMes;
+        const burnToday = ansrToday + gastosToday;
+
+        if (!buckets.has(mes)) buckets.set(mes, { horas: 0, ansr: 0, coste: 0, gastos: 0, exhaustionDate: null });
+        const b = buckets.get(mes)!;
+
+        if (accBurn + burnToday >= remaining) {
+          const fraction = (remaining - accBurn) / burnToday;
+          b.horas += hoursToday * fraction;
+          b.ansr  += ansrToday  * fraction;
+          b.coste += costeToday * fraction;
+          b.gastos += gastosToday * fraction;
+          b.exhaustionDate = key;
+          exhaustionDate = key;
+          break outer;
+        } else {
+          b.horas  += hoursToday;
+          b.ansr   += ansrToday;
+          b.coste  += costeToday;
+          b.gastos += gastosToday;
+          accBurn  += burnToday;
+        }
+      }
+    }
+    cur.setDate(cur.getDate() + 1);
+  }
+
+  const rows: ForecastRow[] = [...buckets.entries()].map(([mes, v]) => ({
+    mes,
+    horas: v.horas,
+    ansr:  v.ansr,
+    coste: v.coste,
+    gastos: v.gastos,
+    exhaustionDate: v.exhaustionDate,
+  }));
+
+  return { rows, exhaustionDate };
+}
+
 // ---------------------------------------------------------------------------
 // Formatters
 // ---------------------------------------------------------------------------
@@ -32,12 +211,26 @@ const eur = new Intl.NumberFormat("es-ES", {
   maximumFractionDigits: 0,
 });
 
+const eurDec = new Intl.NumberFormat("es-ES", {
+  style: "currency",
+  currency: "EUR",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
 const hrs = new Intl.NumberFormat("es-ES", { maximumFractionDigits: 1 });
 
 function fmtMonth(ym: string): string {
   const [year, month] = ym.split("-");
   const date = new Date(Number(year), Number(month) - 1, 1);
   return date.toLocaleDateString("es-ES", { month: "short", year: "numeric" });
+}
+
+function fmtDate(s: string): string {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("es-ES", {
+    weekday: "long", day: "numeric", month: "long", year: "numeric",
+  });
 }
 
 function pctColor(ansr: number, margin: number): string {
@@ -65,9 +258,19 @@ export default function ClientMonthlyKpis() {
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
   const [rows, setRows] = useState<MonthlyKpi[]>([]);
+  const [forecastParams, setForecastParams] = useState<ForecastParams | null>(null);
+  const [empData, setEmpData] = useState<Map<string, EmployeeRow[]>>(new Map());
+  const [disabledEmps, setDisabledEmps] = useState<Set<string>>(new Set());
+  const [empFcHours, setEmpFcHours] = useState<Map<string, number>>(new Map());
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
   const [loadingList, setLoadingList] = useState(true);
   const [loadingData, setLoadingData] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [savedIndicator, setSavedIndicator] = useState(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const indicatorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const overridesLoadedRef = useRef(false);
 
   // Reload client list when FY changes
   useEffect(() => {
@@ -79,7 +282,7 @@ export default function ClientMonthlyKpis() {
         if (error) {
           setError(error.message);
         } else {
-          const list = ((data as ClientOption[]) ?? []);
+          const list = (data as ClientOption[]) ?? [];
           setClients(list);
           setSelectedId(list.length > 0 ? list[0].client_id : "");
         }
@@ -88,43 +291,258 @@ export default function ClientMonthlyKpis() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fiscalYear]);
 
-  // Load monthly KPIs when selection or FY changes
+  // Load monthly KPIs + forecast params + employee data when selection or FY changes
   useEffect(() => {
-    if (!selectedId) { setRows([]); return; }
+    if (!selectedId) {
+      setRows([]); setForecastParams(null); setEmpData(new Map());
+      setEmpFcHours(new Map()); setExpandedMonths(new Set()); return;
+    }
     setLoadingData(true);
     setError(null);
     const params: Record<string, unknown> = { p_client_id: selectedId };
     if (fiscalYear) params.p_fiscal_year = fiscalYear;
-    supabase
-      .rpc("get_client_monthly_kpis", params)
-      .then(({ data, error }) => {
-        if (error) {
-          setError(error.message);
-          setRows([]);
-        } else {
-          setRows((data as MonthlyKpi[]) ?? []);
-        }
-        setLoadingData(false);
-      });
+    setExpandedMonths(new Set());
+    setDisabledEmps(new Set());
+    setEmpFcHours(new Map());
+    Promise.all([
+      supabase.rpc("get_client_monthly_kpis", params),
+      supabase.rpc("get_client_forecast_params", params),
+      supabase.rpc("get_client_employee_monthly_kpis", params),
+      supabase.rpc("get_forecast_overrides", { p_scope_type: "client", p_scope_id: selectedId }),
+    ]).then(([kpiRes, fcRes, empRes, overrideRes]) => {
+      if (kpiRes.error) {
+        setError(kpiRes.error.message);
+        setRows([]);
+      } else {
+        setRows((kpiRes.data as MonthlyKpi[]) ?? []);
+      }
+      const fcData = fcRes.data as Array<{ headcount: number; last_date: string | null }> | null;
+      if (!fcRes.error && fcData && fcData.length > 0 && fcData[0].headcount > 0) {
+        setForecastParams({
+          headcount: fcData[0].headcount,
+          lastDate: fcData[0].last_date ? String(fcData[0].last_date).slice(0, 10) : null,
+        });
+      } else {
+        setForecastParams(null);
+      }
+      const empRows = (empRes.data ?? []) as Array<EmployeeRow & { mes: string }>;
+      const empMap = new Map<string, EmployeeRow[]>();
+      for (const { mes, ...rest } of empRows) {
+        if (!empMap.has(mes)) empMap.set(mes, []);
+        empMap.get(mes)!.push(rest as EmployeeRow);
+      }
+      setEmpData(empMap);
+      // Apply saved overrides
+      const overrides = (overrideRes.data ?? []) as Array<{ employee_gui: string; hours_per_day: number | null; is_disabled: boolean }>;
+      if (overrideRes.error) {
+        console.error("[forecast overrides load]", overrideRes.error);
+        setSaveError(`No se pudieron cargar los ajustes guardados: ${overrideRes.error.message}`);
+      } else {
+        setSaveError(null);
+      }
+      const fcHoursMap = new Map<string, number>();
+      const disabledSet = new Set<string>();
+      for (const o of overrides) {
+        if (o.hours_per_day !== null) fcHoursMap.set(o.employee_gui, o.hours_per_day);
+        if (o.is_disabled) disabledSet.add(o.employee_gui);
+      }
+      setEmpFcHours(fcHoursMap);
+      setDisabledEmps(disabledSet);
+      overridesLoadedRef.current = true;
+      setLoadingData(false);
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, fiscalYear]);
 
   // ---------------------------------------------------------------------------
+  // Employee-aware derived data
+  // ---------------------------------------------------------------------------
+  const allEmployees = useMemo(() => {
+    const map = new Map<string, { name: string | null; rank: string | null }>();
+    empData.forEach((emps) =>
+      emps.forEach((e) => {
+        if (!map.has(e.employee_gui))
+          map.set(e.employee_gui, { name: e.employee_name, rank: e.rank_code });
+      })
+    );
+    return map;
+  }, [empData]);
+
+  const activeHeadcount = useMemo(
+    () => [...allEmployees.keys()].filter((g) => !disabledEmps.has(g)).length,
+    [allEmployees, disabledEmps]
+  );
+
+  // Per-employee historical rates
+  const empRates = useMemo(() => {
+    const acc = new Map<string, { totalAnsr: number; totalCoste: number; totalHoras: number }>();
+    empData.forEach((emps) =>
+      emps.forEach((e) => {
+        const cur = acc.get(e.employee_gui) ?? { totalAnsr: 0, totalCoste: 0, totalHoras: 0 };
+        cur.totalAnsr  += e.ansr;
+        cur.totalCoste += e.coste_margen;
+        cur.totalHoras += e.horas;
+        acc.set(e.employee_gui, cur);
+      })
+    );
+    const rates = new Map<string, { ansrPerHour: number; costPerHour: number }>();
+    acc.forEach((v, gui) =>
+      rates.set(gui, {
+        ansrPerHour: v.totalHoras > 0 ? v.totalAnsr  / v.totalHoras : 0,
+        costPerHour: v.totalHoras > 0 ? v.totalCoste / v.totalHoras : 0,
+      })
+    );
+    return rates;
+  }, [empData]);
+
+  const filteredRows = useMemo((): MonthlyKpi[] => {
+    if (empData.size === 0) return rows;
+    return rows.map((r) => {
+      const activeEmps = (empData.get(r.mes) ?? []).filter(
+        (e) => !disabledEmps.has(e.employee_gui)
+      );
+      const horas        = activeEmps.reduce((s, e) => s + e.horas, 0);
+      const nsr          = activeEmps.reduce((s, e) => s + e.nsr, 0);
+      const ansr         = activeEmps.reduce((s, e) => s + e.ansr, 0);
+      const coste_margen = activeEmps.reduce((s, e) => s + e.coste_margen, 0);
+      const margen_bruto = activeEmps.reduce((s, e) => s + e.margen_bruto, 0);
+      return { ...r, horas, nsr, ansr, coste_margen, margen_bruto, ter: ansr + r.gasto_total };
+    });
+  }, [rows, empData, disabledEmps]);
+
+  // ---------------------------------------------------------------------------
+  // Auto-save overrides whenever empFcHours or disabledEmps change
+  // ---------------------------------------------------------------------------
+  const saveOverrides = useCallback(() => {
+    if (!selectedId || allEmployees.size === 0) return;
+    const upserts = [...allEmployees.keys()].map((gui) =>
+      supabase.rpc("upsert_forecast_override", {
+        p_scope_type: "client",
+        p_scope_id: selectedId,
+        p_employee_gui: gui,
+        p_hours_per_day: empFcHours.get(gui) ?? 8.4,
+        p_is_disabled: disabledEmps.has(gui),
+      })
+    );
+    Promise.all(upserts).then((results) => {
+      const err = results.find((r) => r.error)?.error;
+      if (err) { console.error("[forecast save]", err); setSaveError(`Error al guardar: ${err.message}`); }
+      else {
+        setSaveError(null);
+        setSavedIndicator(true);
+        if (indicatorTimerRef.current) clearTimeout(indicatorTimerRef.current);
+        indicatorTimerRef.current = setTimeout(() => setSavedIndicator(false), 2000);
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, allEmployees, empFcHours, disabledEmps]);
+
+  useEffect(() => {
+    if (!overridesLoadedRef.current) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(saveOverrides, 600);
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empFcHours, disabledEmps]);
+
+  // ---------------------------------------------------------------------------
   // Totals
   // ---------------------------------------------------------------------------
-  const totalHoras  = rows.reduce((s, r) => s + r.horas, 0);
-  const totalNsr    = rows.reduce((s, r) => s + r.nsr, 0);
-  const totalAnsr   = rows.reduce((s, r) => s + r.ansr, 0);
-  const totalCoste  = rows.reduce((s, r) => s + r.coste_margen, 0);
-  const totalMargen = rows.reduce((s, r) => s + r.margen_bruto, 0);
-  const totalGastos = rows.reduce((s, r) => s + r.gasto_total, 0);
-  const totalTer    = rows.reduce((s, r) => s + r.ter, 0);
+  const totalHoras  = filteredRows.reduce((s, r) => s + r.horas, 0);
+  const totalNsr    = filteredRows.reduce((s, r) => s + r.nsr, 0);
+  const totalAnsr   = filteredRows.reduce((s, r) => s + r.ansr, 0);
+  const totalCoste  = filteredRows.reduce((s, r) => s + r.coste_margen, 0);
+  const totalMargen = filteredRows.reduce((s, r) => s + r.margen_bruto, 0);
+  const totalGastos = filteredRows.reduce((s, r) => s + r.gasto_total, 0);
+  const totalTer    = filteredRows.reduce((s, r) => s + r.ter, 0);
 
-  // Running accumulators
+  // Forecast employees array: per-employee h/día + individual rates
+  const forecastEmployees = useMemo((): ForecastEmployee[] => {
+    const globalAnsrPerHour = totalHoras > 0 ? totalAnsr / totalHoras : 0;
+    const globalCostPerHour = totalHoras > 0 ? totalCoste / totalHoras : 0;
+    const activeGuids = [...allEmployees.keys()].filter((g) => !disabledEmps.has(g));
+    if (activeGuids.length > 0) {
+      return activeGuids.map((g) => ({
+        hoursPerDay: empFcHours.get(g) ?? 8.4,
+        ansrPerHour: empRates.get(g)?.ansrPerHour ?? globalAnsrPerHour,
+        costPerHour: empRates.get(g)?.costPerHour ?? globalCostPerHour,
+      }));
+    }
+    if (forecastParams && forecastParams.headcount > 0) {
+      return Array(forecastParams.headcount).fill(null).map(() => ({
+        hoursPerDay: 8.4,
+        ansrPerHour: globalAnsrPerHour,
+        costPerHour: globalCostPerHour,
+      }));
+    }
+    return [];
+  }, [allEmployees, disabledEmps, empFcHours, empRates, forecastParams, totalHoras, totalAnsr, totalCoste]);
+
+  const empHoursPerDayArr = useMemo(
+    () => forecastEmployees.map((e) => e.hoursPerDay),
+    [forecastEmployees]
+  );
+
+  // Running accumulators (mutated during render)
   let accHoras  = 0;
   let accAnsr   = 0;
   let accGastos = 0;
   let accTer    = 0;
+
+  // ---------------------------------------------------------------------------
+  // Forecast
+  // ---------------------------------------------------------------------------
+  const effectiveFY = useMemo(() => {
+    if (fiscalYear) return fiscalYear;
+    const today = new Date();
+    const m = today.getMonth() + 1;
+    return m >= 7 ? today.getFullYear() + 1 : today.getFullYear();
+  }, [fiscalYear]);
+
+  const selected = clients.find((c) => c.client_id === selectedId);
+  const budget = selected?.budget ?? null;
+  const ansrPerHour     = totalHoras > 0 ? totalAnsr / totalHoras : 0;
+  const costPerHour     = totalHoras > 0 ? totalCoste / totalHoras : 0;
+  const gastosMensuales = filteredRows.length > 0 ? totalGastos / filteredRows.length : 0;
+
+  const forecastResult = useMemo((): ForecastResult => {
+    if (!budget || budget <= 0 || !forecastParams || totalHoras === 0 || forecastEmployees.length === 0) {
+      return { rows: [], exhaustionDate: null };
+    }
+    return buildForecast({
+      employees: forecastEmployees,
+      lastDate: forecastParams.lastDate,
+      gastosMensuales,
+      remaining: budget - totalTer,
+      fy: effectiveFY,
+    });
+  }, [budget, forecastParams, totalHoras, forecastEmployees, gastosMensuales, totalTer, effectiveFY]);
+
+  const { rows: forecastRows, exhaustionDate } = forecastResult;
+  const forecastTotalHoras  = forecastRows.reduce((s, r) => s + r.horas, 0);
+  const forecastTotalAnsr   = forecastRows.reduce((s, r) => s + r.ansr, 0);
+  const forecastTotalCoste  = forecastRows.reduce((s, r) => s + r.coste, 0);
+  const forecastTotalGastos = forecastRows.reduce((s, r) => s + r.gastos, 0);
+  const forecastTotalTer    = forecastTotalAnsr + forecastTotalGastos;
+
+  const toggleMonth    = (mes: string) =>
+    setExpandedMonths((prev) => { const n = new Set(prev); n.has(mes) ? n.delete(mes) : n.add(mes); return n; });
+  const toggleEmployee = (gui: string) => {
+    const willBeDisabled = !disabledEmps.has(gui);
+    setDisabledEmps((prev) => { const n = new Set(prev); willBeDisabled ? n.add(gui) : n.delete(gui); return n; });
+  };
+
+  const handleReset = () => {
+    supabase.rpc("reset_forecast_overrides", { p_scope_type: "client", p_scope_id: selectedId })
+      .then(({ error }) => {
+        if (error) { console.error("[forecast reset]", error); setSaveError(`Error al resetear: ${error.message}`); }
+        else setSaveError(null);
+      });
+    overridesLoadedRef.current = false;
+    setEmpFcHours(new Map());
+    setDisabledEmps(new Set());
+    setTimeout(() => { overridesLoadedRef.current = true; }, 0);
+  };
 
   // ---------------------------------------------------------------------------
   // Render
@@ -139,8 +557,6 @@ export default function ClientMonthlyKpis() {
   }
 
   if (clients.length === 0) return null;
-
-  const selected = clients.find((c) => c.client_id === selectedId);
 
   return (
     <section className="w-full max-w-7xl space-y-4">
@@ -170,12 +586,42 @@ export default function ClientMonthlyKpis() {
         </p>
       )}
 
-      {error && (
-        <p className="text-sm text-red-500">Error: {error}</p>
+      {error && <p className="text-sm text-red-500">Error: {error}</p>}
+
+      {saveError && (
+        <div className="flex items-start gap-2 rounded-lg border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/30 px-3 py-2 text-xs text-red-700 dark:text-red-400">
+          <span className="text-red-500 shrink-0">⚠</span>
+          <span><strong>Ajustes no guardados:</strong> {saveError}. Asegúrate de haber ejecutado la migración <code>20260511040000_forecast_employee_override.sql</code> en Supabase.</span>
+        </div>
       )}
 
       {loadingData && (
         <div className="h-48 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 animate-pulse" />
+      )}
+
+      {/* Budget exhaustion alert */}
+      {!loadingData && exhaustionDate && (
+        <div className="flex items-start gap-3 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30 px-4 py-3">
+          <span className="text-amber-500 text-lg leading-none mt-0.5">⚠</span>
+          <div className="text-sm">
+            <span className="font-semibold text-amber-800 dark:text-amber-300">
+              El presupuesto se agota el {fmtDate(exhaustionDate)}
+            </span>
+            <span className="text-amber-700 dark:text-amber-400 ml-2">
+              — quedan {eur.format(budget! - totalTer)} de presupuesto
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Budget covers full FY */}
+      {!loadingData && forecastRows.length > 0 && !exhaustionDate && budget && (
+        <div className="flex items-center gap-3 rounded-lg border border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-950/30 px-4 py-3">
+          <span className="text-green-500 text-lg leading-none">✓</span>
+          <span className="text-sm font-medium text-green-800 dark:text-green-300">
+            El presupuesto cubre todo el Fiscal Year FY{effectiveFY}.
+          </span>
+        </div>
       )}
 
       {!loadingData && rows.length > 0 && (
@@ -199,62 +645,223 @@ export default function ClientMonthlyKpis() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {rows.map((r) => {
+
+              {/* ── Actual rows ── */}
+              {filteredRows.map((r) => {
                 accHoras  += r.horas;
                 accAnsr   += r.ansr;
                 accGastos += r.gasto_total;
                 accTer    += r.ter;
+                const isExp     = expandedMonths.has(r.mes);
+                const monthEmps = empData.get(r.mes) ?? [];
                 return (
-                  <tr
-                    key={r.mes}
-                    className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
-                  >
-                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">
-                      {fmtMonth(r.mes)}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-gray-700 dark:text-gray-300">
-                      {hrs.format(r.horas)}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-gray-400 dark:text-gray-500">
-                      {hrs.format(accHoras)}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-gray-600 dark:text-gray-400">
-                      {eur.format(r.nsr)}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums font-medium text-gray-900 dark:text-gray-100">
-                      {eur.format(r.ansr)}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-gray-400 dark:text-gray-500">
-                      {eur.format(accAnsr)}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-gray-500 dark:text-gray-400">
-                      {eur.format(r.coste_margen)}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums font-medium text-gray-900 dark:text-gray-100">
-                      {eur.format(r.margen_bruto)}
-                    </td>
-                    <td className={`px-4 py-3 text-right tabular-nums font-semibold ${pctColor(r.ansr, r.margen_bruto)}`}>
-                      {pct(r.ansr, r.margen_bruto)}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-gray-500 dark:text-gray-400">
-                      {r.gasto_total !== 0 ? eur.format(r.gasto_total) : "—"}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-gray-400 dark:text-gray-500">
-                      {accGastos !== 0 ? eur.format(accGastos) : "—"}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums font-medium text-gray-900 dark:text-gray-100">
-                      {eur.format(r.ter)}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-gray-400 dark:text-gray-500">
-                      {eur.format(accTer)}
-                    </td>
-                  </tr>
+                  <Fragment key={r.mes}>
+                    <tr className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                        {monthEmps.length > 0 && (
+                          <button
+                            onClick={() => toggleMonth(r.mes)}
+                            className="mr-2 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-xs"
+                          >
+                            {isExp ? "▼" : "▶"}
+                          </button>
+                        )}
+                        {fmtMonth(r.mes)}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums text-gray-700 dark:text-gray-300">{hrs.format(r.horas)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-gray-400 dark:text-gray-500">{hrs.format(accHoras)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-gray-600 dark:text-gray-400">{eur.format(r.nsr)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums font-medium text-gray-900 dark:text-gray-100">{eur.format(r.ansr)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-gray-400 dark:text-gray-500">{eur.format(accAnsr)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-gray-500 dark:text-gray-400">{eur.format(r.coste_margen)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums font-medium text-gray-900 dark:text-gray-100">{eur.format(r.margen_bruto)}</td>
+                      <td className={`px-4 py-3 text-right tabular-nums font-semibold ${pctColor(r.ansr, r.margen_bruto)}`}>{pct(r.ansr, r.margen_bruto)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-gray-500 dark:text-gray-400">{r.gasto_total !== 0 ? eur.format(r.gasto_total) : "—"}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-gray-400 dark:text-gray-500">{accGastos !== 0 ? eur.format(accGastos) : "—"}</td>
+                      <td className="px-4 py-3 text-right tabular-nums font-medium text-gray-900 dark:text-gray-100">{eur.format(r.ter)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-gray-400 dark:text-gray-500">{eur.format(accTer)}</td>
+                    </tr>
+                    {/* ── Employee sub-rows ── */}
+                    {isExp && monthEmps.map((e) => {
+                      const isDisabled = disabledEmps.has(e.employee_gui);
+                      const empMargen  = e.ansr - e.coste_margen;
+                      return (
+                        <tr
+                          key={`emp-${r.mes}-${e.employee_gui}`}
+                          className={`text-xs border-l-4 ${
+                            isDisabled
+                              ? "opacity-40 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20"
+                              : "border-indigo-200 dark:border-indigo-800 bg-gray-50/60 dark:bg-gray-800/20"
+                          }`}
+                        >
+                          <td className="pl-8 pr-4 py-2 text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                            <button
+                              onClick={() => toggleEmployee(e.employee_gui)}
+                              className={`mr-2 rounded-full w-4 h-4 border text-[9px] leading-none inline-flex items-center justify-center flex-shrink-0 transition-colors ${
+                                isDisabled
+                                  ? "border-red-300 bg-red-50 text-red-500 dark:border-red-700 dark:bg-red-900/20"
+                                  : "border-green-400 bg-green-50 text-green-600 dark:border-green-600 dark:bg-green-900/20"
+                              }`}
+                              title={isDisabled ? "Activar empleado" : "Desactivar empleado"}
+                            >
+                              {isDisabled ? "✕" : "✓"}
+                            </button>
+                            {e.employee_name ?? e.employee_gui}
+                            {e.rank_code && <span className="ml-1.5 text-gray-400">· {e.rank_code}</span>}
+                          </td>
+                          <td className="px-4 py-2 text-right tabular-nums">{hrs.format(e.horas)}</td>
+                          <td className="px-4 py-2" />
+                          <td className="px-4 py-2 text-right tabular-nums">{eur.format(e.nsr)}</td>
+                          <td className="px-4 py-2 text-right tabular-nums">{eur.format(e.ansr)}</td>
+                          <td className="px-4 py-2" />
+                          <td className="px-4 py-2 text-right tabular-nums">{eur.format(e.coste_margen)}</td>
+                          <td className="px-4 py-2 text-right tabular-nums">{eur.format(empMargen)}</td>
+                          <td className={`px-4 py-2 text-right tabular-nums ${pctColor(e.ansr, empMargen)}`}>{pct(e.ansr, empMargen)}</td>
+                          <td className="px-4 py-2" />
+                          <td className="px-4 py-2" />
+                          <td className="px-4 py-2 text-right tabular-nums">{eur.format(e.ansr)}</td>
+                          <td className="px-4 py-2" />
+                        </tr>
+                      );
+                    })}
+                  </Fragment>
+                );
+              })}
+
+              {/* ── Forecast separator ── */}
+              {forecastRows.length > 0 && (
+                <tr className="bg-blue-50 dark:bg-blue-950/30">
+                  <td colSpan={13} className="px-4 py-2 text-xs font-semibold uppercase tracking-widest text-blue-500 dark:text-blue-400 border-t border-blue-200 dark:border-blue-800">
+                    <div className="flex items-center justify-between gap-4">
+                      <span>
+                        Forecast · {empHoursPerDayArr.length} empleados · {empHoursPerDayArr.reduce((s, h) => s + h, 0).toFixed(1)} h/día ·{" "}
+                        {eurDec.format(ansrPerHour)}/h ANSR · {eurDec.format(costPerHour)}/h coste ·{" "}
+                        {eur.format(gastosMensuales)}/mes gastos · presupuesto restante: {eur.format((budget ?? 0) - totalTer)}
+                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {savedIndicator && (
+                          <span className="text-green-600 dark:text-green-400 text-[10px] font-medium">✓ guardado</span>
+                        )}
+                        <button
+                          onClick={handleReset}
+                          className="rounded border border-blue-300 dark:border-blue-700 px-2 py-0.5 text-[10px] font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors normal-case tracking-normal"
+                          title="Restablecer horas y empleados a los valores por defecto"
+                        >
+                          Reset forecast
+                        </button>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              )}
+
+              {/* ── Forecast rows ── */}
+              {forecastRows.map((r) => {
+                accHoras  += r.horas;
+                accAnsr   += r.ansr;
+                accGastos += r.gastos;
+                accTer    += r.ansr + r.gastos;
+                const fcMargen    = r.ansr - r.coste;
+                const isFcExp     = expandedMonths.has(`fc-${r.mes}`);
+                const activeEmps  = [...allEmployees.entries()].filter(([g]) => !disabledEmps.has(g));
+                const totalDailyH = activeEmps.reduce((s, [g]) => s + (empFcHours.get(g) ?? 8.4), 0) || 1;
+                const globalAnsrPerHour = totalHoras > 0 ? totalAnsr / totalHoras : 0;
+                const globalCostPerHour = totalHoras > 0 ? totalCoste / totalHoras : 0;
+                return (
+                  <Fragment key={`fc-${r.mes}`}>
+                    <tr className="bg-blue-50/60 dark:bg-blue-950/20 hover:bg-blue-100/60 dark:hover:bg-blue-950/40 transition-colors">
+                      <td className="px-4 py-3 font-medium text-blue-700 dark:text-blue-300 whitespace-nowrap">
+                        {activeEmps.length > 0 && (
+                          <button
+                            onClick={() => toggleMonth(`fc-${r.mes}`)}
+                            className="mr-2 text-blue-400 hover:text-blue-600 dark:hover:text-blue-200 text-xs"
+                          >
+                            {isFcExp ? "▼" : "▶"}
+                          </button>
+                        )}
+                        {fmtMonth(r.mes)}
+                        {r.exhaustionDate && (
+                          <span className="ml-1.5 text-[10px] font-semibold bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 rounded px-1 py-0.5 align-middle whitespace-nowrap">
+                            hasta {parseLocalDate(r.exhaustionDate).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
+                          </span>
+                        )}
+                        {!r.exhaustionDate && (
+                          <span className="ml-1.5 text-[10px] font-semibold bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 rounded px-1 py-0.5 align-middle">
+                            FC
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums text-blue-600 dark:text-blue-300">{hrs.format(r.horas)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-blue-400 dark:text-blue-500">{hrs.format(accHoras)}</td>
+                      <td className="px-4 py-3 text-right text-blue-300 dark:text-blue-600">—</td>
+                      <td className="px-4 py-3 text-right tabular-nums font-medium text-blue-700 dark:text-blue-300">{eur.format(r.ansr)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-blue-400 dark:text-blue-500">{eur.format(accAnsr)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-blue-500 dark:text-blue-400">{eur.format(r.coste)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums font-medium text-blue-700 dark:text-blue-300">{eur.format(fcMargen)}</td>
+                      <td className={`px-4 py-3 text-right tabular-nums font-semibold ${pctColor(r.ansr, fcMargen)}`}>{pct(r.ansr, fcMargen)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-blue-500 dark:text-blue-400">{eur.format(r.gastos)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-blue-400 dark:text-blue-500">{eur.format(accGastos)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums font-medium text-blue-700 dark:text-blue-300">{eur.format(r.ansr + r.gastos)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-blue-400 dark:text-blue-500">{eur.format(accTer)}</td>
+                    </tr>
+                    {/* ── Projected employee rows ── */}
+                    {isFcExp && activeEmps.map(([gui, emp]) => {
+                      const empDailyH   = empFcHours.get(gui) ?? 9;
+                      const empMonthlyH = (empDailyH / totalDailyH) * r.horas;
+                      const empAnsrRate  = empRates.get(gui)?.ansrPerHour ?? globalAnsrPerHour;
+                      const empCosteRate = empRates.get(gui)?.costPerHour ?? globalCostPerHour;
+                      const empAnsrVal  = empMonthlyH * empAnsrRate;
+                      const empCosteVal = empMonthlyH * empCosteRate;
+                      const empFcMargen = empAnsrVal - empCosteVal;
+                      return (
+                        <tr
+                          key={`fcEmp-${r.mes}-${gui}`}
+                          className="text-xs border-l-4 border-blue-100 dark:border-blue-900 bg-blue-50/30 dark:bg-blue-950/10"
+                        >
+                          <td className="pl-8 pr-4 py-2 text-blue-600 dark:text-blue-400 whitespace-nowrap">
+                            <span className="mr-1.5 text-[9px] font-semibold bg-blue-100 dark:bg-blue-900 text-blue-500 dark:text-blue-300 rounded px-1 py-0.5">FC</span>
+                            {emp.name ?? gui}
+                            {emp.rank && <span className="ml-1.5 text-blue-400">· {emp.rank}</span>}
+                            <input
+                              type="number"
+                              min={0}
+                              max={24}
+                              step={0.5}
+                              value={empFcHours.get(gui) ?? 8.4}
+                              onChange={(ev) => {
+                                const v = parseFloat(ev.target.value);
+                                if (!isNaN(v) && v >= 0)
+                                  setEmpFcHours((prev) => { const m = new Map(prev); m.set(gui, v); return m; });
+                              }}
+                              className="ml-2 w-12 rounded border border-blue-200 dark:border-blue-700 bg-white dark:bg-gray-800 px-1 py-0.5 text-right text-xs text-blue-700 dark:text-blue-300 tabular-nums focus:outline-none focus:ring-1 focus:ring-blue-400"
+                              title="Horas por día (media: lun–jue 9h, vie 6h → 8,4h/día)"
+                            />
+                            <span className="text-blue-400 text-[10px] ml-0.5">h/d</span>
+                          </td>
+                          <td className="px-4 py-2 text-right tabular-nums text-blue-500 dark:text-blue-400">{hrs.format(empMonthlyH)}</td>
+                          <td className="px-4 py-2" />
+                          <td className="px-4 py-2 text-right text-blue-300 dark:text-blue-700">—</td>
+                          <td className="px-4 py-2 text-right tabular-nums text-blue-600 dark:text-blue-400">{eur.format(empAnsrVal)}</td>
+                          <td className="px-4 py-2" />
+                          <td className="px-4 py-2 text-right tabular-nums text-blue-500 dark:text-blue-400">{eur.format(empCosteVal)}</td>
+                          <td className="px-4 py-2 text-right tabular-nums text-blue-600 dark:text-blue-400">{eur.format(empFcMargen)}</td>
+                          <td className={`px-4 py-2 text-right tabular-nums ${pctColor(empAnsrVal, empFcMargen)}`}>{pct(empAnsrVal, empFcMargen)}</td>
+                          <td className="px-4 py-2 text-right text-blue-300 dark:text-blue-700">—</td>
+                          <td className="px-4 py-2" />
+                          <td className="px-4 py-2 text-right tabular-nums text-blue-600 dark:text-blue-400">{eur.format(empAnsrVal)}</td>
+                          <td className="px-4 py-2" />
+                        </tr>
+                      );
+                    })}
+                  </Fragment>
                 );
               })}
             </tbody>
+
             <tfoot>
+              {/* Real totals */}
               <tr className="bg-gray-50 dark:bg-gray-900 border-t-2 border-gray-200 dark:border-gray-700 font-semibold text-gray-900 dark:text-gray-100">
-                <td className="px-4 py-3">Total</td>
+                <td className="px-4 py-3">Real</td>
                 <td className="px-4 py-3 text-right tabular-nums">{hrs.format(totalHoras)}</td>
                 <td className="px-4 py-3" />
                 <td className="px-4 py-3 text-right tabular-nums">{eur.format(totalNsr)}</td>
@@ -262,14 +869,32 @@ export default function ClientMonthlyKpis() {
                 <td className="px-4 py-3" />
                 <td className="px-4 py-3 text-right tabular-nums">{eur.format(totalCoste)}</td>
                 <td className="px-4 py-3 text-right tabular-nums">{eur.format(totalMargen)}</td>
-                <td className={`px-4 py-3 text-right tabular-nums ${pctColor(totalAnsr, totalMargen)}`}>
-                  {pct(totalAnsr, totalMargen)}
-                </td>
+                <td className={`px-4 py-3 text-right tabular-nums ${pctColor(totalAnsr, totalMargen)}`}>{pct(totalAnsr, totalMargen)}</td>
                 <td className="px-4 py-3 text-right tabular-nums">{eur.format(totalGastos)}</td>
                 <td className="px-4 py-3" />
                 <td className="px-4 py-3 text-right tabular-nums">{eur.format(totalTer)}</td>
                 <td className="px-4 py-3" />
               </tr>
+              {/* Forecast totals */}
+              {forecastRows.length > 0 && (
+                <tr className="bg-blue-50 dark:bg-blue-950/30 border-t border-blue-200 dark:border-blue-800 font-semibold text-blue-700 dark:text-blue-300">
+                  <td className="px-4 py-3">Forecast</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{hrs.format(forecastTotalHoras)}</td>
+                  <td className="px-4 py-3" />
+                  <td className="px-4 py-3 text-right">—</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{eur.format(forecastTotalAnsr)}</td>
+                  <td className="px-4 py-3" />
+                  <td className="px-4 py-3 text-right tabular-nums">{eur.format(forecastTotalCoste)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{eur.format(forecastTotalAnsr - forecastTotalCoste)}</td>
+                  <td className={`px-4 py-3 text-right tabular-nums ${pctColor(forecastTotalAnsr, forecastTotalAnsr - forecastTotalCoste)}`}>
+                    {pct(forecastTotalAnsr, forecastTotalAnsr - forecastTotalCoste)}
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums">{eur.format(forecastTotalGastos)}</td>
+                  <td className="px-4 py-3" />
+                  <td className="px-4 py-3 text-right tabular-nums">{eur.format(forecastTotalTer)}</td>
+                  <td className="px-4 py-3" />
+                </tr>
+              )}
             </tfoot>
           </table>
         </div>
@@ -278,6 +903,12 @@ export default function ClientMonthlyKpis() {
       {!loadingData && rows.length === 0 && !error && (
         <p className="text-sm text-gray-400 dark:text-gray-500">
           No hay datos para este cliente.
+        </p>
+      )}
+
+      {!loadingData && rows.length > 0 && !forecastParams && budget && totalHoras === 0 && (
+        <p className="text-xs text-gray-400 dark:text-gray-500 italic">
+          Forecast no disponible: no hay horas imputadas suficientes para calcular las tasas.
         </p>
       )}
     </section>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, Fragment } from "react";
+import { useEffect, useMemo, useState, Fragment, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -43,6 +43,12 @@ type ForecastResult = {
 type ForecastParams = {
   headcount: number;
   lastDate: string | null; // 'YYYY-MM-DD'
+};
+
+type ForecastEmployee = {
+  hoursPerDay: number;  // avg h/día (8.4 = día completo)
+  ansrPerHour: number;
+  costPerHour: number;
 };
 
 type EmployeeRow = {
@@ -108,19 +114,21 @@ function spanishHolidays(year: number): Set<string> {
  * Stops when accumulated ANSR reaches `remaining` or June 30 of FY.
  */
 function buildForecast(params: {
-  empHoursPerDay: number[]; // Mon–Thu hours per active employee; Fri = h × 6/9
+  employees: ForecastEmployee[];
   lastDate: string | null;
-  ansrPerHour: number;
-  costPerHour: number;
   gastosMensuales: number;
   remaining: number;
   fy: number;
 }): ForecastResult {
-  const { empHoursPerDay, lastDate, ansrPerHour, costPerHour, gastosMensuales, remaining, fy } = params;
-  const totalHPerDay    = empHoursPerDay.reduce((s, h) => s + h, 0);
-  const totalHPerDayFri = empHoursPerDay.reduce((s, h) => s + h * (6 / 9), 0);
+  const { employees, lastDate, gastosMensuales, remaining, fy } = params;
+  const totalHPerDay       = employees.reduce((s, e) => s + e.hoursPerDay * (9 / 8.4), 0);
+  const totalHPerDayFri    = employees.reduce((s, e) => s + e.hoursPerDay * (6 / 8.4), 0);
+  const totalAnsrPerDay    = employees.reduce((s, e) => s + e.hoursPerDay * (9 / 8.4) * e.ansrPerHour, 0);
+  const totalAnsrPerDayFri = employees.reduce((s, e) => s + e.hoursPerDay * (6 / 8.4) * e.ansrPerHour, 0);
+  const totalCostePerDay    = employees.reduce((s, e) => s + e.hoursPerDay * (9 / 8.4) * e.costPerHour, 0);
+  const totalCostePerDayFri = employees.reduce((s, e) => s + e.hoursPerDay * (6 / 8.4) * e.costPerHour, 0);
 
-  if (remaining <= 0 || ansrPerHour <= 0 || totalHPerDay === 0) {
+  if (remaining <= 0 || totalAnsrPerDay <= 0 || totalHPerDay === 0) {
     return { rows: [], exhaustionDate: null };
   }
 
@@ -164,8 +172,8 @@ function buildForecast(params: {
       const key = dateToKey(cur);
       if (!getHolidays(cur.getFullYear()).has(key)) {
         const hoursToday = dow === 5 ? totalHPerDayFri : totalHPerDay;
-        const ansrToday = hoursToday * ansrPerHour;
-        const costeToday = hoursToday * costPerHour;
+        const ansrToday  = dow === 5 ? totalAnsrPerDayFri : totalAnsrPerDay;
+        const costeToday = dow === 5 ? totalCostePerDayFri : totalCostePerDay;
         const mes = dateToMes(cur);
         const wdInMes = workingDaysPerMes.get(mes) ?? 1;
         const gastosToday = gastosMensuales / wdInMes;
@@ -274,6 +282,12 @@ export default function ProjectMonthlyKpis() {
   const [loadingList, setLoadingList] = useState(true);
   const [loadingData, setLoadingData] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [savedIndicator, setSavedIndicator] = useState(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const indicatorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Track whether overrides have been loaded (to skip the initial-load save)
+  const overridesLoadedRef = useRef(false);
 
   // Reload engagement list when FY changes
   useEffect(() => {
@@ -302,11 +316,14 @@ export default function ProjectMonthlyKpis() {
     const params: Record<string, unknown> = { p_engagement_id: selectedId };
     if (fiscalYear) params.p_fiscal_year = fiscalYear;
     setExpandedMonths(new Set());
+    setDisabledEmps(new Set());
+    setEmpFcHours(new Map());
     Promise.all([
       supabase.rpc("get_project_monthly_kpis", params),
       supabase.rpc("get_engagement_forecast_params", params),
       supabase.rpc("get_project_employee_monthly_kpis", params),
-    ]).then(([kpiRes, fcRes, empRes]) => {
+      supabase.rpc("get_forecast_overrides", { p_scope_type: "engagement", p_scope_id: selectedId }),
+    ]).then(([kpiRes, fcRes, empRes, overrideRes]) => {
       if (kpiRes.error) {
         setError(kpiRes.error.message);
         setRows([]);
@@ -330,6 +347,23 @@ export default function ProjectMonthlyKpis() {
         empMap.get(mes)!.push(rest as EmployeeRow);
       }
       setEmpData(empMap);
+      // Apply saved overrides
+      const overrides = (overrideRes.data ?? []) as Array<{ employee_gui: string; hours_per_day: number | null; is_disabled: boolean }>;
+      if (overrideRes.error) {
+        console.error("[forecast overrides load]", overrideRes.error);
+        setSaveError(`No se pudieron cargar los ajustes guardados: ${overrideRes.error.message}`);
+      } else {
+        setSaveError(null);
+      }
+      const fcHoursMap = new Map<string, number>();
+      const disabledSet = new Set<string>();
+      for (const o of overrides) {
+        if (o.hours_per_day !== null) fcHoursMap.set(o.employee_gui, o.hours_per_day);
+        if (o.is_disabled) disabledSet.add(o.employee_gui);
+      }
+      setEmpFcHours(fcHoursMap);
+      setDisabledEmps(disabledSet);
+      overridesLoadedRef.current = true;
       setLoadingData(false);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -354,13 +388,27 @@ export default function ProjectMonthlyKpis() {
     [allEmployees, disabledEmps]
   );
 
-  // Array of daily hours (Mon–Thu) per active employee — drives buildForecast
-  const empHoursPerDayArr = useMemo(() => {
-    const activeGuids = [...allEmployees.keys()].filter((g) => !disabledEmps.has(g));
-    if (activeGuids.length > 0) return activeGuids.map((g) => empFcHours.get(g) ?? 9);
-    if (forecastParams && forecastParams.headcount > 0) return Array<number>(forecastParams.headcount).fill(9);
-    return [];
-  }, [allEmployees, disabledEmps, empFcHours, forecastParams]);
+  // Per-employee historical rates
+  const empRates = useMemo(() => {
+    const acc = new Map<string, { totalAnsr: number; totalCoste: number; totalHoras: number }>();
+    empData.forEach((emps) =>
+      emps.forEach((e) => {
+        const cur = acc.get(e.employee_gui) ?? { totalAnsr: 0, totalCoste: 0, totalHoras: 0 };
+        cur.totalAnsr  += e.ansr;
+        cur.totalCoste += e.coste_margen;
+        cur.totalHoras += e.horas;
+        acc.set(e.employee_gui, cur);
+      })
+    );
+    const rates = new Map<string, { ansrPerHour: number; costPerHour: number }>();
+    acc.forEach((v, gui) =>
+      rates.set(gui, {
+        ansrPerHour: v.totalHoras > 0 ? v.totalAnsr  / v.totalHoras : 0,
+        costPerHour: v.totalHoras > 0 ? v.totalCoste / v.totalHoras : 0,
+      })
+    );
+    return rates;
+  }, [empData]);
 
   // Monthly rows recomputed from active employees (falls back to raw rows when no emp data)
   const filteredRows = useMemo((): MonthlyKpi[] => {
@@ -379,6 +427,41 @@ export default function ProjectMonthlyKpis() {
   }, [rows, empData, disabledEmps]);
 
   // ---------------------------------------------------------------------------
+  // Auto-save overrides whenever empFcHours or disabledEmps change
+  // ---------------------------------------------------------------------------
+  const saveOverrides = useCallback(() => {
+    if (!selectedId || allEmployees.size === 0) return;
+    const upserts = [...allEmployees.keys()].map((gui) =>
+      supabase.rpc("upsert_forecast_override", {
+        p_scope_type: "engagement",
+        p_scope_id: selectedId,
+        p_employee_gui: gui,
+        p_hours_per_day: empFcHours.get(gui) ?? 8.4,
+        p_is_disabled: disabledEmps.has(gui),
+      })
+    );
+    Promise.all(upserts).then((results) => {
+      const err = results.find((r) => r.error)?.error;
+      if (err) { console.error("[forecast save]", err); setSaveError(`Error al guardar: ${err.message}`); }
+      else {
+        setSaveError(null);
+        setSavedIndicator(true);
+        if (indicatorTimerRef.current) clearTimeout(indicatorTimerRef.current);
+        indicatorTimerRef.current = setTimeout(() => setSavedIndicator(false), 2000);
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, allEmployees, empFcHours, disabledEmps]);
+
+  useEffect(() => {
+    if (!overridesLoadedRef.current) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(saveOverrides, 600);
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empFcHours, disabledEmps]);
+
+  // ---------------------------------------------------------------------------
   // Totals
   // ---------------------------------------------------------------------------
   const totalHoras  = filteredRows.reduce((s, r) => s + r.horas, 0);
@@ -388,6 +471,33 @@ export default function ProjectMonthlyKpis() {
   const totalMargen = filteredRows.reduce((s, r) => s + r.margen_bruto, 0);
   const totalGastos = filteredRows.reduce((s, r) => s + r.gasto_total, 0);
   const totalTer    = filteredRows.reduce((s, r) => s + r.ter, 0);
+
+  // Forecast employees array: per-employee h/día + individual rates
+  const forecastEmployees = useMemo((): ForecastEmployee[] => {
+    const globalAnsrPerHour = totalHoras > 0 ? totalAnsr / totalHoras : 0;
+    const globalCostPerHour = totalHoras > 0 ? totalCoste / totalHoras : 0;
+    const activeGuids = [...allEmployees.keys()].filter((g) => !disabledEmps.has(g));
+    if (activeGuids.length > 0) {
+      return activeGuids.map((g) => ({
+        hoursPerDay: empFcHours.get(g) ?? 8.4,
+        ansrPerHour: empRates.get(g)?.ansrPerHour ?? globalAnsrPerHour,
+        costPerHour: empRates.get(g)?.costPerHour ?? globalCostPerHour,
+      }));
+    }
+    if (forecastParams && forecastParams.headcount > 0) {
+      return Array(forecastParams.headcount).fill(null).map(() => ({
+        hoursPerDay: 8.4,
+        ansrPerHour: globalAnsrPerHour,
+        costPerHour: globalCostPerHour,
+      }));
+    }
+    return [];
+  }, [allEmployees, disabledEmps, empFcHours, empRates, forecastParams, totalHoras, totalAnsr, totalCoste]);
+
+  const empHoursPerDayArr = useMemo(
+    () => forecastEmployees.map((e) => e.hoursPerDay),
+    [forecastEmployees]
+  );
 
   // Running accumulators (mutated during render)
   let accHoras  = 0;
@@ -413,19 +523,17 @@ export default function ProjectMonthlyKpis() {
   const gastosMensuales = filteredRows.length > 0 ? totalGastos / filteredRows.length : 0;
 
   const forecastResult = useMemo((): ForecastResult => {
-    if (!budget || budget <= 0 || !forecastParams || totalHoras === 0) {
+    if (!budget || budget <= 0 || !forecastParams || totalHoras === 0 || forecastEmployees.length === 0) {
       return { rows: [], exhaustionDate: null };
     }
     return buildForecast({
-      empHoursPerDay: empHoursPerDayArr,
+      employees: forecastEmployees,
       lastDate: forecastParams.lastDate,
-      ansrPerHour,
-      costPerHour,
       gastosMensuales,
       remaining: budget - totalTer,
       fy: effectiveFY,
     });
-  }, [budget, forecastParams, totalHoras, empHoursPerDayArr, ansrPerHour, costPerHour, gastosMensuales, totalTer, effectiveFY]);
+  }, [budget, forecastParams, totalHoras, forecastEmployees, gastosMensuales, totalTer, effectiveFY]);
 
   const { rows: forecastRows, exhaustionDate } = forecastResult;
   const forecastTotalHoras  = forecastRows.reduce((s, r) => s + r.horas, 0);
@@ -436,8 +544,23 @@ export default function ProjectMonthlyKpis() {
 
   const toggleMonth    = (mes: string) =>
     setExpandedMonths((prev) => { const n = new Set(prev); n.has(mes) ? n.delete(mes) : n.add(mes); return n; });
-  const toggleEmployee = (gui: string) =>
-    setDisabledEmps((prev) => { const n = new Set(prev); n.has(gui) ? n.delete(gui) : n.add(gui); return n; });
+  const toggleEmployee = (gui: string) => {
+    const willBeDisabled = !disabledEmps.has(gui);
+    setDisabledEmps((prev) => { const n = new Set(prev); willBeDisabled ? n.add(gui) : n.delete(gui); return n; });
+    // save handled by the auto-save useEffect
+  };
+
+  const handleReset = () => {
+    supabase.rpc("reset_forecast_overrides", { p_scope_type: "engagement", p_scope_id: selectedId })
+      .then(({ error }) => {
+        if (error) { console.error("[forecast reset]", error); setSaveError(`Error al resetear: ${error.message}`); }
+        else setSaveError(null);
+      });
+    overridesLoadedRef.current = false; // prevent auto-save from firing on state reset
+    setEmpFcHours(new Map());
+    setDisabledEmps(new Set());
+    setTimeout(() => { overridesLoadedRef.current = true; }, 0);
+  };
 
   // ---------------------------------------------------------------------------
   // Render
@@ -483,6 +606,13 @@ export default function ProjectMonthlyKpis() {
 
       {error && (
         <p className="text-sm text-red-500">Error: {error}</p>
+      )}
+
+      {saveError && (
+        <div className="flex items-start gap-2 rounded-lg border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/30 px-3 py-2 text-xs text-red-700 dark:text-red-400">
+          <span className="text-red-500 shrink-0">⚠</span>
+          <span><strong>Ajustes no guardados:</strong> {saveError}. Asegúrate de haber ejecutado la migración <code>20260511040000_forecast_employee_override.sql</code> en Supabase.</span>
+        </div>
       )}
 
       {loadingData && (
@@ -646,9 +776,25 @@ export default function ProjectMonthlyKpis() {
               {forecastRows.length > 0 && (
                 <tr className="bg-blue-50 dark:bg-blue-950/30">
                   <td colSpan={13} className="px-4 py-2 text-xs font-semibold uppercase tracking-widest text-blue-500 dark:text-blue-400 border-t border-blue-200 dark:border-blue-800">
-                    Forecast · {empHoursPerDayArr.length} empleados · {empHoursPerDayArr.reduce((s, h) => s + h, 0).toFixed(1)} h/día ·{" "}
-                    {eurDec.format(ansrPerHour)}/h ANSR · {eurDec.format(costPerHour)}/h coste ·{" "}
-                    {eur.format(gastosMensuales)}/mes gastos · presupuesto restante: {eur.format((budget ?? 0) - totalTer)}
+                    <div className="flex items-center justify-between gap-4">
+                      <span>
+                        Forecast · {empHoursPerDayArr.length} empleados · {empHoursPerDayArr.reduce((s, h) => s + h, 0).toFixed(1)} h/día ·{" "}
+                        {eurDec.format(ansrPerHour)}/h ANSR · {eurDec.format(costPerHour)}/h coste ·{" "}
+                        {eur.format(gastosMensuales)}/mes gastos · presupuesto restante: {eur.format((budget ?? 0) - totalTer)}
+                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {savedIndicator && (
+                          <span className="text-green-600 dark:text-green-400 text-[10px] font-medium">✓ guardado</span>
+                        )}
+                        <button
+                          onClick={handleReset}
+                          className="rounded border border-blue-300 dark:border-blue-700 px-2 py-0.5 text-[10px] font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors normal-case tracking-normal"
+                          title="Restablecer horas y empleados a los valores por defecto"
+                        >
+                          Reset forecast
+                        </button>
+                      </div>
+                    </div>
                   </td>
                 </tr>
               )}
@@ -662,7 +808,9 @@ export default function ProjectMonthlyKpis() {
                 const fcMargen   = r.ansr - r.coste;
                 const isFcExp    = expandedMonths.has(`fc-${r.mes}`);
                 const activeEmps = [...allEmployees.entries()].filter(([g]) => !disabledEmps.has(g));
-                const totalDailyH = activeEmps.reduce((s, [g]) => s + (empFcHours.get(g) ?? 9), 0) || 1;
+                const totalDailyH = activeEmps.reduce((s, [g]) => s + (empFcHours.get(g) ?? 8.4), 0) || 1;
+                const globalAnsrPerHour = totalHoras > 0 ? totalAnsr / totalHoras : 0;
+                const globalCostPerHour = totalHoras > 0 ? totalCoste / totalHoras : 0;
                 return (
                   <Fragment key={`fc-${r.mes}`}>
                     <tr className="bg-blue-50/60 dark:bg-blue-950/20 hover:bg-blue-100/60 dark:hover:bg-blue-950/40 transition-colors">
@@ -724,10 +872,12 @@ export default function ProjectMonthlyKpis() {
                     </tr>
                     {/* ── Projected employee rows ── */}
                     {isFcExp && activeEmps.map(([gui, emp]) => {
-                      const empDailyH   = empFcHours.get(gui) ?? 9;
+                      const empDailyH   = empFcHours.get(gui) ?? 8.4;
                       const empMonthlyH = (empDailyH / totalDailyH) * r.horas;
-                      const empAnsrVal  = empMonthlyH * ansrPerHour;
-                      const empCosteVal = empMonthlyH * costPerHour;
+                      const empAnsrRate  = empRates.get(gui)?.ansrPerHour ?? globalAnsrPerHour;
+                      const empCosteRate = empRates.get(gui)?.costPerHour ?? globalCostPerHour;
+                      const empAnsrVal  = empMonthlyH * empAnsrRate;
+                      const empCosteVal = empMonthlyH * empCosteRate;
                       const empFcMargen = empAnsrVal - empCosteVal;
                       return (
                         <tr
@@ -750,7 +900,7 @@ export default function ProjectMonthlyKpis() {
                                   setEmpFcHours((prev) => { const m = new Map(prev); m.set(gui, v); return m; });
                               }}
                               className="ml-2 w-12 rounded border border-blue-200 dark:border-blue-700 bg-white dark:bg-gray-800 px-1 py-0.5 text-right text-xs text-blue-700 dark:text-blue-300 tabular-nums focus:outline-none focus:ring-1 focus:ring-blue-400"
-                              title="Horas por día laborable (lun–jue)"
+                              title="Horas por día (media: lun–jue 9h, vie 6h → 8,4h/día)"
                             />
                             <span className="text-blue-400 text-[10px] ml-0.5">h/d</span>
                           </td>
