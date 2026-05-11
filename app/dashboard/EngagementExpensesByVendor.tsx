@@ -7,10 +7,8 @@ import { createClient } from "@/lib/supabase/client";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-type EngagementOption = {
-  engagement_id: string;
-  engagement_name: string;
-  project_name: string;
+type ClientOption = {
+  client_id: string;
   client_name: string;
   gasto_total: number;
 };
@@ -49,42 +47,42 @@ export default function EngagementExpensesByVendor() {
   const fyStr = searchParams.get("fy");
   const fiscalYear = fyStr ? parseInt(fyStr, 10) : null;
 
-  const [engagements, setEngagements] = useState<EngagementOption[]>([]);
-  const [selectedId, setSelectedId] = useState<string>("");
+  const [clients, setClients] = useState<ClientOption[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState<string>("");
   const [rows, setRows] = useState<VendorExpense[]>([]);
   const [loadingList, setLoadingList] = useState(true);
   const [loadingData, setLoadingData] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Reload engagement list (with expenses) when FY changes
+  // Reload client list when FY changes
   useEffect(() => {
     setLoadingList(true);
     const params = fiscalYear ? { p_fiscal_year: fiscalYear } : {};
     supabase
-      .rpc("get_engagement_kpis", params)
+      .rpc("get_client_kpis", params)
       .then(({ data, error }) => {
         if (error) {
           setError(error.message);
         } else {
-          const all = (data as EngagementOption[]) ?? [];
-          const withExpenses = all.filter((e) => e.gasto_total > 0);
-          setEngagements(withExpenses);
-          setSelectedId(withExpenses.length > 0 ? withExpenses[0].engagement_id : "");
+          const all = (data as ClientOption[]) ?? [];
+          const withExpenses = all.filter((c) => c.gasto_total > 0);
+          setClients(withExpenses);
+          setSelectedClientId(withExpenses.length > 0 ? withExpenses[0].client_id : "");
         }
         setLoadingList(false);
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fiscalYear]);
 
-  // Load vendor breakdown when selection or FY changes
+  // Load vendor breakdown when client or FY changes
   useEffect(() => {
-    if (!selectedId) { setRows([]); return; }
+    if (!selectedClientId) { setRows([]); return; }
     setLoadingData(true);
     setError(null);
-    const params: Record<string, unknown> = { p_engagement_id: selectedId };
+    const params: Record<string, unknown> = { p_client_id: selectedClientId };
     if (fiscalYear) params.p_fiscal_year = fiscalYear;
     supabase
-      .rpc("get_engagement_expenses_by_vendor", params)
+      .rpc("get_client_expenses_by_vendor", params)
       .then(({ data, error }) => {
         if (error) {
           setError(error.message);
@@ -95,14 +93,14 @@ export default function EngagementExpensesByVendor() {
         setLoadingData(false);
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, fiscalYear]);
+  }, [selectedClientId, fiscalYear]);
 
   // ---------------------------------------------------------------------------
   // Derived
   // ---------------------------------------------------------------------------
   const totalGasto = rows.reduce((s, r) => s + r.total_gasto, 0);
   const totalLineas = rows.reduce((s, r) => s + Number(r.n_lineas), 0);
-  const selected = engagements.find((e) => e.engagement_id === selectedId);
+  const selectedClient = clients.find((c) => c.client_id === selectedClientId);
 
   // Percentage bar width helper
   function barWidth(gasto: number): string {
@@ -122,34 +120,33 @@ export default function EngagementExpensesByVendor() {
     );
   }
 
-  if (engagements.length === 0) return null;
+  if (clients.length === 0) return null;
 
   return (
     <section className="w-full max-w-7xl space-y-4">
-      {/* Header + selector */}
+      {/* Header + client selector */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <h2 className="text-lg font-semibold shrink-0">Gastos por vendor</h2>
         <select
-          value={selectedId}
-          onChange={(e) => setSelectedId(e.target.value)}
-          className="w-full sm:max-w-lg rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          value={selectedClientId}
+          onChange={(e) => setSelectedClientId(e.target.value)}
+          className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 sm:max-w-xs"
         >
-          {engagements.map((e) => (
-            <option key={e.engagement_id} value={e.engagement_id}>
-              {e.client_name} — {e.project_name} — {e.engagement_name} ({eur.format(e.gasto_total)})
+          {clients.map((c) => (
+            <option key={c.client_id} value={c.client_id}>
+              {c.client_name} ({eur.format(c.gasto_total)})
             </option>
           ))}
         </select>
       </div>
 
       {/* Subtitle */}
-      {selected && (
+      {selectedClient && (
         <p className="text-xs text-gray-500 dark:text-gray-400">
-          {selected.client_name} &rsaquo; {selected.project_name} &rsaquo;{" "}
+          Total gastos cliente:{" "}
           <span className="font-medium text-gray-700 dark:text-gray-300">
-            {selected.engagement_name}
+            {eur.format(selectedClient.gasto_total)}
           </span>
-          {" — "}Total gastos: <span className="font-medium">{eur.format(selected.gasto_total)}</span>
         </p>
       )}
 
@@ -226,7 +223,7 @@ export default function EngagementExpensesByVendor() {
 
       {!loadingData && rows.length === 0 && !error && (
         <p className="text-sm text-gray-400 dark:text-gray-500">
-          No hay gastos para este engagement.
+          No hay gastos para este cliente.
         </p>
       )}
     </section>

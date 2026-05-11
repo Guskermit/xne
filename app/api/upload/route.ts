@@ -3,7 +3,7 @@ import * as XLSX from "xlsx";
 import { createClient } from "@/lib/supabase/server";
 
 const SHEET_NAME = "Detail";
-const HEADER_ROW_IDX = 7; // 0-based → fila 8 en Excel
+const HEADER_ROW_IDX_DEFAULT = 7; // 0-based → fila 8 en Excel (fallback)
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -120,9 +120,20 @@ export async function POST(req: NextRequest) {
     raw: true,    // devuelve números como JS numbers, no como strings formateados
   });
 
-  if (sheetData.length <= HEADER_ROW_IDX) {
+  if (sheetData.length <= HEADER_ROW_IDX_DEFAULT) {
     return NextResponse.json({ error: "El fichero no contiene datos suficientes" }, { status: 400 });
   }
+
+  // Auto-detectar la fila de encabezados buscando la que contiene "Engagement ID"
+  let HEADER_ROW_IDX = HEADER_ROW_IDX_DEFAULT;
+  for (let i = 0; i < Math.min(sheetData.length, 20); i++) {
+    const row = sheetData[i] as unknown[];
+    if (row.some((cell) => cell != null && String(cell).trim() === "Engagement ID")) {
+      HEADER_ROW_IDX = i;
+      break;
+    }
+  }
+  console.log(`[upload] Hoja "${SHEET_NAME}" - fila de encabezados detectada: ${HEADER_ROW_IDX + 1} (0-based: ${HEADER_ROW_IDX})`);
 
   const rawHeaders = sheetData[HEADER_ROW_IDX] as unknown[];
   const headers = rawHeaders.map((h) => (h ? String(h).trim() : ""));
@@ -146,7 +157,13 @@ export async function POST(req: NextRequest) {
   }
 
   if (rows.length === 0) {
-    return NextResponse.json({ error: "No se encontraron filas de datos" }, { status: 400 });
+    const detectedHeaders = headers.filter(Boolean).slice(0, 10).join(", ");
+    return NextResponse.json(
+      {
+        error: `No se encontraron filas de datos (fila de encabezados detectada: ${HEADER_ROW_IDX + 1}). Columnas encontradas: ${detectedHeaders || "ninguna"}`,
+      },
+      { status: 400 }
+    );
   }
 
   // ------------------------------------------------------------------
