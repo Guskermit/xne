@@ -146,6 +146,7 @@ export default function UploadExcel() {
   const conflicts              = (result?.success && result.conflicts)             ? result.conflicts             : [];
   const intraConflicts         = (result?.success && result.intraConflicts)        ? result.intraConflicts        : [];
   const intraExpenseConflicts  = (result?.success && result.intraExpenseConflicts) ? result.intraExpenseConflicts : [];
+  const isBusy = status === "loading" || status === "confirming";
 
   async function handleIntraExpConfirm() {
     const rows: Record<string, unknown>[] = [];
@@ -363,7 +364,7 @@ export default function UploadExcel() {
 
           <button
             onClick={handleIntraExpConfirm}
-            disabled={status === "confirming"}
+            disabled={isBusy}
             className="self-start rounded-md bg-orange-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-orange-700 disabled:opacity-50"
           >
             Aplicar selección de gastos
@@ -440,7 +441,7 @@ export default function UploadExcel() {
 
           <button
             onClick={handleIntraConfirm}
-            disabled={status === "confirming"}
+            disabled={isBusy}
             className="self-start rounded-md bg-purple-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-purple-700 disabled:opacity-50"
           >
             Aplicar selección de horas
@@ -511,7 +512,7 @@ export default function UploadExcel() {
 
           <button
             onClick={() => handleConfirm(conflicts)}
-            disabled={selected.size === 0 || status === "confirming"}
+            disabled={selected.size === 0 || isBusy}
             className="self-start rounded-md bg-amber-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
           >
             Sobrescribir{selected.size > 0 ? ` (${selected.size})` : ""} seleccionadas

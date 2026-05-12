@@ -1,0 +1,23 @@
+# Dependencias y caché de Next.js (no necesarias en la imagen)
+node_modules
+.next
+out
+
+# Variables de entorno locales (nunca en imagen)
+.env
+.env*.local
+
+# Archivos de sistema
+.DS_Store
+*.tsbuildinfo
+
+# Git y CI
+.git
+.github
+.gitignore
+
+# Scripts de desarrollo
+scripts/
+README.md
+database.MD
+supabase/
