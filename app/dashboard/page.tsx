@@ -10,6 +10,7 @@ import ClientMonthlyKpis from "./ClientMonthlyKpis";
 import EngagementExpensesByVendor from "./EngagementExpensesByVendor";
 import FiscalYearSelector from "./FiscalYearSelector";
 import ClearDatabaseButtonWithRefresh from "./ClearDatabaseButtonWithRefresh";
+import EmployeeWeekly from "./EmployeeWeekly";
 
 export default async function DashboardPage({
   searchParams,
@@ -91,6 +92,8 @@ export default async function DashboardPage({
       <Suspense fallback={simpleSkeleton}>
         <EngagementExpensesByVendor />
       </Suspense>
+
+      <EmployeeWeekly fiscalYear={fiscalYear} />
 
       <div className="flex w-full max-w-7xl items-center gap-3">
         <UploadExcel />
