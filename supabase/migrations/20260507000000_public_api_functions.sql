@@ -245,8 +245,7 @@ begin
       nullif(e->>'activity_code', ''),
       nullif(e->>'category_code', '')
     from jsonb_array_elements(p_expense_rows) e
-    on conflict (engagement_id, voucher_id) where voucher_id is not null
-    do nothing
+    on conflict do nothing
     returning id
   )
   select count(*) into v_expense_inserted from ins;

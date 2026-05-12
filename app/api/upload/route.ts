@@ -1,6 +1,54 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { createClient } from "@/lib/supabase/server";
+import { createDb } from "@/lib/db";
+
+export type IntraExpenseGroup = {
+  engagement_id: string;
+  transaction_date: string | null;
+  transaction_type_code: string;
+  vendor_id: string | null;
+  voucher_id: string | null;
+  autoKeptIdx: number;
+  occurrences: Array<{
+    idx: number;
+    expense_amount: number;
+    expense_description: string | null;
+    accounting_date: string | null;
+    row: Record<string, unknown>;
+  }>;
+};
+
+export type IntraConflictGroup = {
+  employee_name: string | null;
+  employee_gui: string;
+  engagement_id: string;
+  transaction_date: string;
+  activity_code: string | null;
+  autoKeptIdx: number;
+  occurrences: Array<{
+    idx: number;
+    charged_hours: number | null;
+    ansr_revenue: number | null;
+    accounting_date: string | null;
+    row: Record<string, unknown>;
+  }>;
+};
+
+export type ConflictRow = {
+  employee_name: string | null;
+  employee_gui: string;
+  engagement_id: string;
+  transaction_date: string;
+  activity_code: string | null;
+  existing: {
+    id: number;
+    charged_hours: number | null;
+    ansr_revenue: number | null;
+    accounting_date: string | null;
+  };
+  incoming: Record<string, unknown>;
+};
 
 const SHEET_NAME = "Detail";
 const HEADER_ROW_IDX_DEFAULT = 7; // 0-based → fila 8 en Excel (fallback)
@@ -367,7 +415,145 @@ export async function POST(req: NextRequest) {
     }
 
     // ------------------------------------------------------------------
-    // 6. Llamar a la función RPC (upsert dims + insert hechos en 1 llamada)
+    // 6. Agrupar por clave única → detectar duplicados internos del Excel
+    // ------------------------------------------------------------------
+    const timeRowGroups = new Map<string, typeof timeRows>();
+    for (const tr of timeRows) {
+      const k = `${tr.engagement_id}|${tr.employee_gui}|${tr.transaction_date ?? ""}|${tr.activity_code ?? ""}|${tr.charged_hours ?? ""}`;
+      const g = timeRowGroups.get(k) ?? [];
+      g.push(tr);
+      timeRowGroups.set(k, g);
+    }
+
+    // Deduped: keep last occurrence of each key
+    const dedupedTimeRows = [...timeRowGroups.values()].map((g) => g[g.length - 1]);
+    const intraExcelDupes = timeRows.length - dedupedTimeRows.length;
+
+    // Build intra-conflict groups (only where values actually differ between occurrences)
+    const intraConflicts: IntraConflictGroup[] = [];
+    for (const [, g] of timeRowGroups) {
+      if (g.length <= 1) continue;
+      const hasVariance = g.some(
+        (r) => r.charged_hours !== g[0].charged_hours || r.ansr_revenue !== g[0].ansr_revenue
+      );
+      if (!hasVariance) continue; // identical rows, nothing to decide
+      const first = g[0];
+      intraConflicts.push({
+        employee_name: employees.get(first.employee_gui)?.name ?? null,
+        employee_gui:  first.employee_gui,
+        engagement_id: first.engagement_id,
+        transaction_date: first.transaction_date ?? "",
+        activity_code: first.activity_code,
+        autoKeptIdx: g.length - 1,
+        occurrences: g.map((r, i) => ({
+          idx: i + 1,
+          charged_hours:  r.charged_hours,
+          ansr_revenue:   r.ansr_revenue,
+          accounting_date: r.accounting_date,
+          row: r as unknown as Record<string, unknown>,
+        })),
+      });
+    }
+
+    // ------------------------------------------------------------------
+    // 6b. Deduplicar gastos + detectar duplicados internos
+    // ------------------------------------------------------------------
+    // Clave de dedup:
+    //   - Con voucher_id → engagement + voucher + importe + descripción
+    //     (un PO/voucher SAP puede tener múltiples líneas con distinto
+    //      producto e importe; sólo son duplicados si coinciden en todo)
+    //   - Sin voucher_id → clave natural completa
+    const expenseRowGroups = new Map<string, typeof expenseRows>();
+    for (const er of expenseRows) {
+      const k = er.voucher_id
+        ? `v:${er.engagement_id}|${er.voucher_id}|${er.expense_amount}|${er.expense_description ?? ""}`
+        : `n:${er.engagement_id}|${er.vendor_id ?? ""}|${er.transaction_type_code}|${er.transaction_date ?? ""}|${er.expense_amount}|${er.accounting_date ?? ""}|${er.expense_description ?? ""}`;
+      const g = expenseRowGroups.get(k) ?? [];
+      g.push(er);
+      expenseRowGroups.set(k, g);
+    }
+    const dedupedExpenseRows = [...expenseRowGroups.values()].map((g) => g[g.length - 1]);
+    const expenseIntraDupes  = expenseRows.length - dedupedExpenseRows.length;
+
+    const intraExpenseConflicts: IntraExpenseGroup[] = [];
+    for (const [, g] of expenseRowGroups) {
+      if (g.length <= 1) continue;
+      const hasVariance = g.some(
+        (r) => r.expense_amount !== g[0].expense_amount || r.expense_description !== g[0].expense_description
+      );
+      if (!hasVariance) continue;
+      const first = g[0];
+      intraExpenseConflicts.push({
+        engagement_id:         first.engagement_id,
+        transaction_date:      first.transaction_date,
+        transaction_type_code: first.transaction_type_code,
+        vendor_id:             first.vendor_id,
+        voucher_id:            first.voucher_id,
+        autoKeptIdx:           g.length - 1,
+        occurrences: g.map((r, i) => ({
+          idx:                 i + 1,
+          expense_amount:      r.expense_amount,
+          expense_description: r.expense_description,
+          accounting_date:     r.accounting_date,
+          row:                 r as unknown as Record<string, unknown>,
+        })),
+      });
+    }
+
+    // ------------------------------------------------------------------
+    // 7. Llamar a la función RPC
+    const conflicts: ConflictRow[] = [];
+    if (dedupedTimeRows.length > 0) {
+      try {
+        const db = createDb();
+        const engIds = [...new Set(dedupedTimeRows.map((r) => r.engagement_id))];
+        const existingRows = await db`
+          SELECT
+            f.id, f.engagement_id, f.employee_gui,
+            f.transaction_date::text  AS transaction_date,
+            f.activity_code,
+            f.charged_hours::float8   AS charged_hours,
+            f.ansr_revenue::float8    AS ansr_revenue,
+            f.accounting_date::text   AS accounting_date,
+            e.employee_name
+          FROM te.fact_time_charge f
+          LEFT JOIN te.dim_employee e ON e.employee_gui = f.employee_gui
+          WHERE f.engagement_id = ANY(${engIds})
+        `;
+        const existingMap = new Map<string, typeof existingRows[number]>();
+        for (const row of existingRows) {
+          const k = `${row.engagement_id}|${row.employee_gui}|${row.transaction_date}|${row.activity_code ?? ""}|${row.charged_hours ?? ""}`;
+          existingMap.set(k, row);
+        }
+        for (const tr of dedupedTimeRows) {
+          const k = `${tr.engagement_id}|${tr.employee_gui}|${tr.transaction_date ?? ""}|${tr.activity_code ?? ""}|${tr.charged_hours ?? ""}`;
+          const ex = existingMap.get(k);
+          if (ex) {
+            conflicts.push({
+              employee_name: ex.employee_name as string | null,
+              employee_gui: tr.employee_gui,
+              engagement_id: tr.engagement_id,
+              transaction_date: tr.transaction_date ?? "",
+              activity_code: tr.activity_code,
+              existing: {
+                id: ex.id as number,
+                charged_hours: ex.charged_hours as number | null,
+                ansr_revenue: ex.ansr_revenue as number | null,
+                accounting_date: ex.accounting_date as string | null,
+              },
+              incoming: tr as unknown as Record<string, unknown>,
+            });
+          }
+        }
+        await db.end();
+      } catch (dbErr) {
+        console.error("[upload] conflict detection error:", dbErr);
+        // Non-fatal: continue without conflict info
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // 8. Llamar a la función RPC (upsert dims + insert hechos en 1 llamada)
     // ------------------------------------------------------------------
     const { data: rpcResult, error: rpcError } = await supabase.rpc(
       "load_time_expense",
@@ -414,8 +600,8 @@ export async function POST(req: NextRequest) {
           sub_category_description: v.sub,
         })),
         p_ttypes:       [...transactionTypes].map((t) => ({ transaction_type_code: t })),
-        p_time_rows:    timeRows,
-        p_expense_rows: expenseRows,
+        p_time_rows:    dedupedTimeRows,
+        p_expense_rows: dedupedExpenseRows,
       }
     );
 
@@ -430,13 +616,18 @@ export async function POST(req: NextRequest) {
       success: true,
       stats: {
         total_rows: rows.length,
-        time_charges_attempted: timeRows.length,
+        time_charges_attempted: dedupedTimeRows.length,
         time_charges_inserted: result.time_inserted,
-        time_charges_skipped: timeRows.length - result.time_inserted,
-        expenses_attempted: expenseRows.length,
+        time_charges_skipped: dedupedTimeRows.length - result.time_inserted - conflicts.length,
+        time_charges_intra_dupes: intraExcelDupes,
+        expenses_attempted: dedupedExpenseRows.length,
         expenses_inserted: result.expense_inserted,
-        expenses_skipped: expenseRows.length - result.expense_inserted,
+        expenses_skipped: dedupedExpenseRows.length - result.expense_inserted,
+        expenses_intra_dupes: expenseIntraDupes,
       },
+      conflicts,
+      intraConflicts,
+      intraExpenseConflicts,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Error desconocido";
