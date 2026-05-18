@@ -270,14 +270,17 @@ export default function GlobalTerForecastChart() {
             width={64}
           />
           <Tooltip
-            content={(props) => (
-              <CustomTooltip
-                active={(props as { active?: boolean }).active}
-                payload={(props as { payload?: TooltipPayloadEntry[] }).payload}
-                label={(props as { label?: string }).label}
-                rows={rows}
-              />
-            )}
+            content={(props) => {
+              const p = props as unknown as { active?: boolean; payload?: TooltipPayloadEntry[]; label?: string };
+              return (
+                <CustomTooltip
+                  active={p.active}
+                  payload={p.payload}
+                  label={p.label}
+                  rows={rows}
+                />
+              );
+            }}
             cursor={{ fill: "currentColor", fillOpacity: 0.04 }}
           />
           <Legend
