@@ -278,9 +278,9 @@ export default function GlobalQuarterlyTerChart() {
           <Tooltip
             content={(props) => (
               <ChartTooltip
-                active={(props as { active?: boolean }).active}
-                payload={(props as { payload?: Array<{ dataKey: string; value: number }> }).payload}
-                label={(props as { label?: string }).label}
+                active={props.active}
+                payload={(props.payload as unknown as Array<{ dataKey: string; value: number }>) ?? undefined}
+                label={props.label as string | undefined}
                 keyMeta={keyMeta}
               />
             )}
