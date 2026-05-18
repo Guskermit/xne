@@ -21,7 +21,7 @@ type EngagementRow = {
   gasto_total: number;
   ter: number;
   budget: number | null;
-  status: string;
+  status: "activo" | "cerrado";
 };
 
 // ---------------------------------------------------------------------------
