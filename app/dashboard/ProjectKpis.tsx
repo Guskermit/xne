@@ -20,12 +20,14 @@ function terVal(r: EngagementKpi): number {
 
 async function fetchKpis(
   fiscalYear?: number,
-  activeOnly?: boolean
+  activeOnly?: boolean,
+  businessUnit?: string
 ): Promise<EngagementKpi[]> {
   const supabase = await createClient();
   const params: Record<string, unknown> = {};
   if (fiscalYear) params.p_fiscal_year = fiscalYear;
   if (activeOnly) params.p_active_only = true;
+  if (businessUnit) params.p_business_unit = businessUnit;
   const { data, error } = await supabase.rpc("get_engagement_kpis", params);
   if (error) throw new Error(error.message);
   return (data as EngagementKpi[]) ?? [];
@@ -62,13 +64,17 @@ function KpiCard({
 export default async function ProjectKpis({
   fiscalYear,
   activeOnly,
+  businessUnit,
+  summaryOnly = false,
 }: {
   fiscalYear?: number;
   activeOnly?: boolean;
+  businessUnit?: string;
+  summaryOnly?: boolean;
 }) {
   let rows: EngagementKpi[];
   try {
-    rows = await fetchKpis(fiscalYear, activeOnly);
+    rows = await fetchKpis(fiscalYear, activeOnly, businessUnit);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Error desconocido";
     return (
@@ -96,9 +102,9 @@ export default async function ProjectKpis({
 
   return (
     <section className="w-full max-w-7xl space-y-6">
-      <h2 className="text-lg font-semibold">Resumen por engagement</h2>
+      {!summaryOnly && <h2 className="text-lg font-semibold">Resumen por engagement</h2>}
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
         <KpiCard
           label="Horas imputadas"
           value={hrs.format(totalHoras)}
@@ -117,7 +123,7 @@ export default async function ProjectKpis({
         <KpiCard label="TER" value={eur.format(totalTer)} highlight />
       </div>
 
-      <ProjectKpisTable rows={rows} />
+      {!summaryOnly && <ProjectKpisTable rows={rows} />}
     </section>
   );
 }

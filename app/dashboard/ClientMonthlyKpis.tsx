@@ -249,14 +249,19 @@ function pct(ansr: number, margin: number): string {
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
-export default function ClientMonthlyKpis() {
+export default function ClientMonthlyKpis({ clientId }: { clientId?: string }) {
   const supabase = createClient();
   const searchParams = useSearchParams();
   const fyStr = searchParams.get("fy");
   const fiscalYear = fyStr ? parseInt(fyStr, 10) : null;
 
   const [clients, setClients] = useState<ClientOption[]>([]);
-  const [selectedId, setSelectedId] = useState<string>("");
+  const [selectedId, setSelectedId] = useState<string>(clientId ?? "");
+
+  // Sync external clientId prop into selectedId
+  useEffect(() => {
+    if (clientId !== undefined) setSelectedId(clientId);
+  }, [clientId]);
   const [rows, setRows] = useState<MonthlyKpi[]>([]);
   const [forecastParams, setForecastParams] = useState<ForecastParams | null>(null);
   const [empData, setEmpData] = useState<Map<string, EmployeeRow[]>>(new Map());
@@ -284,7 +289,10 @@ export default function ClientMonthlyKpis() {
         } else {
           const list = (data as ClientOption[]) ?? [];
           setClients(list);
-          setSelectedId(list.length > 0 ? list[0].client_id : "");
+          // Only set from list when no external clientId is controlling the selection
+          if (clientId === undefined) {
+            setSelectedId(list.length > 0 ? list[0].client_id : "");
+          }
         }
         setLoadingList(false);
       });
@@ -560,24 +568,29 @@ export default function ClientMonthlyKpis() {
 
   return (
     <section className="w-full max-w-7xl space-y-4">
-      {/* Header + selector */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-        <h2 className="text-lg font-semibold shrink-0">Evolución mensual por cliente</h2>
-        <select
-          value={selectedId}
-          onChange={(e) => setSelectedId(e.target.value)}
-          className="w-full sm:max-w-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          {clients.map((c) => (
-            <option key={c.client_id} value={c.client_id}>
-              {c.client_name}
-            </option>
-          ))}
-        </select>
-      </div>
+      {/* Header + selector (only shown when not controlled externally) */}
+      {clientId === undefined && (
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <h2 className="text-lg font-semibold shrink-0">Evolución mensual por cliente</h2>
+          <select
+            value={selectedId}
+            onChange={(e) => setSelectedId(e.target.value)}
+            className="w-full sm:max-w-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {clients.map((c) => (
+              <option key={c.client_id} value={c.client_id}>
+                {c.client_name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      {clientId !== undefined && (
+        <h2 className="text-lg font-semibold">Evolución mensual</h2>
+      )}
 
       {/* Subtitle */}
-      {selected && (
+      {clientId === undefined && selected && (
         <p className="text-xs text-gray-500 dark:text-gray-400">
           Todos los proyectos de{" "}
           <span className="font-medium text-gray-700 dark:text-gray-300">
