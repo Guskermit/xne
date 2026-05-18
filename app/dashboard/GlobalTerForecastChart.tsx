@@ -246,9 +246,18 @@ export default function GlobalTerForecastChart() {
           <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.08} />
           <XAxis
             dataKey="mes"
-            tick={(props) => (
-              <CustomXTick {...props} forecastMonths={forecastMonths} partialMonths={partialMonths} />
-            )}
+            tick={(props) => {
+              const { x, y, payload } = props as { x?: number; y?: number; payload?: { value: string } };
+              return (
+                <CustomXTick
+                  x={x}
+                  y={y}
+                  payload={payload}
+                  forecastMonths={forecastMonths}
+                  partialMonths={partialMonths}
+                />
+              );
+            }}
             tickLine={false}
             axisLine={false}
             height={hasEstimation ? 36 : 24}
