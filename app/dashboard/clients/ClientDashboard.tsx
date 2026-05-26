@@ -7,6 +7,7 @@ import ClientMonthlyKpis from "../ClientMonthlyKpis";
 import ClientVendorExpenses from "./ClientVendorExpenses";
 import ClientVendorExpensesChart from "./ClientVendorExpensesChart";
 import ClientAnsrChart from "./ClientAnsrChart";
+import ClientWeeklyChart from "./ClientWeeklyChart";
 
 type ClientOption = {
   client_id: string;
@@ -60,7 +61,10 @@ export default function ClientDashboard({
       {/* 2. Stacked bar chart – ANSR by engagement per month */}
       <ClientAnsrChart clientId={selectedId} />
 
-      {/* 3. Monthly evolution + forecast */}
+      {/* 3. Weekly evolution – hours & ANSR */}
+      <ClientWeeklyChart clientId={selectedId} />
+
+      {/* 4. Monthly evolution + forecast */}
       <ClientMonthlyKpis clientId={selectedId} />
 
       {/* 4. Expandable vendor expenses */}
