@@ -1,4 +1,4 @@
-### CADA VEZ QUE GENERE UNA NUEVA VERSION, hacer esto para ejecutar en local
+### CADA VEZ QUE GENERE UNA NUEVA VERSION, hacer esto para ejecutar en local.
 
 
 1- Ir a docker desktop y parar el container de XNE
