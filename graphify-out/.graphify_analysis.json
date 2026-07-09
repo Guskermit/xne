@@ -1,0 +1,648 @@
+{
+  "communities": {
+    "0": [
+      "app_api_clear_route",
+      "app_api_clear_route_post",
+      "app_api_clients_clientid_clear_route",
+      "app_api_clients_clientid_clear_route_post",
+      "app_api_upload_confirm_expense_route",
+      "app_api_upload_confirm_expense_route_post",
+      "app_api_upload_confirm_route",
+      "app_api_upload_confirm_route_post",
+      "app_auth_actions",
+      "app_auth_actions_login",
+      "app_auth_actions_logout",
+      "app_auth_actions_signup",
+      "app_auth_callback_route",
+      "app_auth_callback_route_get",
+      "app_auth_login_page",
+      "app_auth_login_page_loginpage",
+      "app_auth_signup_page",
+      "app_auth_signup_page_signuppage",
+      "app_dashboard_clients_page",
+      "app_dashboard_clients_page_clientoption",
+      "app_dashboard_clients_page_clientspage",
+      "app_dashboard_engagements_page",
+      "app_dashboard_engagements_page_engagementspage",
+      "app_dashboard_evolution_page",
+      "app_dashboard_evolution_page_evolutionpage",
+      "app_dashboard_fiscalyearselector",
+      "app_dashboard_fiscalyearselector_fiscalyearselector",
+      "app_dashboard_fiscalyearselector_props",
+      "app_dashboard_layout",
+      "app_dashboard_layout_dashboardlayout",
+      "app_dashboard_navlinks",
+      "app_dashboard_navlinks_links",
+      "app_dashboard_navlinks_navlinks",
+      "app_page",
+      "app_page_home",
+      "lib_db",
+      "lib_db_createdb",
+      "lib_supabase_server",
+      "lib_supabase_server_createclient"
+    ],
+    "1": [
+      "package",
+      "package_dependencies",
+      "package_dependencies_next",
+      "package_dependencies_postgres",
+      "package_dependencies_react",
+      "package_dependencies_react_dom",
+      "package_dependencies_recharts",
+      "package_dependencies_supabase_ssr",
+      "package_dependencies_supabase_supabase_js",
+      "package_dependencies_xlsx",
+      "package_devdependencies",
+      "package_devdependencies_autoprefixer",
+      "package_devdependencies_eslint",
+      "package_devdependencies_eslint_config_next",
+      "package_devdependencies_postcss",
+      "package_devdependencies_tailwindcss",
+      "package_devdependencies_types_node",
+      "package_devdependencies_types_react",
+      "package_devdependencies_types_react_dom",
+      "package_devdependencies_typescript",
+      "package_name",
+      "package_private",
+      "package_scripts",
+      "package_scripts_build",
+      "package_scripts_dev",
+      "package_scripts_lint",
+      "package_scripts_start",
+      "package_version"
+    ],
+    "2": [
+      "app_dashboard_clientmonthlykpis",
+      "app_dashboard_clientmonthlykpis_buildforecast",
+      "app_dashboard_clientmonthlykpis_clientmonthlykpis",
+      "app_dashboard_clientmonthlykpis_clientoption",
+      "app_dashboard_clientmonthlykpis_datetokey",
+      "app_dashboard_clientmonthlykpis_datetomes",
+      "app_dashboard_clientmonthlykpis_easterdate",
+      "app_dashboard_clientmonthlykpis_employeerow",
+      "app_dashboard_clientmonthlykpis_eur",
+      "app_dashboard_clientmonthlykpis_eurdec",
+      "app_dashboard_clientmonthlykpis_fmtdate",
+      "app_dashboard_clientmonthlykpis_fmtmonth",
+      "app_dashboard_clientmonthlykpis_forecastemployee",
+      "app_dashboard_clientmonthlykpis_forecastparams",
+      "app_dashboard_clientmonthlykpis_forecastresult",
+      "app_dashboard_clientmonthlykpis_forecastrow",
+      "app_dashboard_clientmonthlykpis_hrs",
+      "app_dashboard_clientmonthlykpis_monthlykpi",
+      "app_dashboard_clientmonthlykpis_parselocaldate",
+      "app_dashboard_clientmonthlykpis_pct",
+      "app_dashboard_clientmonthlykpis_pctcolor",
+      "app_dashboard_clientmonthlykpis_spanishholidays"
+    ],
+    "3": [
+      "app_dashboard_projectmonthlykpis",
+      "app_dashboard_projectmonthlykpis_buildforecast",
+      "app_dashboard_projectmonthlykpis_datetokey",
+      "app_dashboard_projectmonthlykpis_datetomes",
+      "app_dashboard_projectmonthlykpis_easterdate",
+      "app_dashboard_projectmonthlykpis_employeerow",
+      "app_dashboard_projectmonthlykpis_engagementoption",
+      "app_dashboard_projectmonthlykpis_eur",
+      "app_dashboard_projectmonthlykpis_eurdec",
+      "app_dashboard_projectmonthlykpis_fmtdate",
+      "app_dashboard_projectmonthlykpis_fmtmonth",
+      "app_dashboard_projectmonthlykpis_forecastemployee",
+      "app_dashboard_projectmonthlykpis_forecastparams",
+      "app_dashboard_projectmonthlykpis_forecastresult",
+      "app_dashboard_projectmonthlykpis_forecastrow",
+      "app_dashboard_projectmonthlykpis_hrs",
+      "app_dashboard_projectmonthlykpis_monthlykpi",
+      "app_dashboard_projectmonthlykpis_parselocaldate",
+      "app_dashboard_projectmonthlykpis_pct",
+      "app_dashboard_projectmonthlykpis_pctcolor",
+      "app_dashboard_projectmonthlykpis_projectmonthlykpis",
+      "app_dashboard_projectmonthlykpis_spanishholidays"
+    ],
+    "4": [
+      "app_dashboard_projectkpis",
+      "app_dashboard_projectkpis_eur",
+      "app_dashboard_projectkpis_fetchkpis",
+      "app_dashboard_projectkpis_hrs",
+      "app_dashboard_projectkpis_kpicard",
+      "app_dashboard_projectkpis_pct",
+      "app_dashboard_projectkpis_projectkpis",
+      "app_dashboard_projectkpis_terval",
+      "app_dashboard_projectkpistable",
+      "app_dashboard_projectkpistable_engagementkpi",
+      "app_dashboard_projectkpistable_eur",
+      "app_dashboard_projectkpistable_hrs",
+      "app_dashboard_projectkpistable_pct",
+      "app_dashboard_projectkpistable_pctcolor",
+      "app_dashboard_projectkpistable_pctconsumed",
+      "app_dashboard_projectkpistable_pctconsumedcolor",
+      "app_dashboard_projectkpistable_projectkpistable",
+      "app_dashboard_projectkpistable_remainingcolor",
+      "app_dashboard_projectkpistable_sortheader",
+      "app_dashboard_projectkpistable_sortkey",
+      "app_dashboard_projectkpistable_terval"
+    ],
+    "5": [
+      "tsconfig",
+      "tsconfig_compileroptions",
+      "tsconfig_compileroptions_allowjs",
+      "tsconfig_compileroptions_esmoduleinterop",
+      "tsconfig_compileroptions_incremental",
+      "tsconfig_compileroptions_isolatedmodules",
+      "tsconfig_compileroptions_jsx",
+      "tsconfig_compileroptions_lib",
+      "tsconfig_compileroptions_module",
+      "tsconfig_compileroptions_moduleresolution",
+      "tsconfig_compileroptions_noemit",
+      "tsconfig_compileroptions_paths",
+      "tsconfig_compileroptions_plugins",
+      "tsconfig_compileroptions_resolvejsonmodule",
+      "tsconfig_compileroptions_skiplibcheck",
+      "tsconfig_compileroptions_strict",
+      "tsconfig_compileroptions_target",
+      "tsconfig_exclude",
+      "tsconfig_include",
+      "tsconfig_paths"
+    ],
+    "6": [
+      "app_dashboard_businessunitselector",
+      "app_dashboard_businessunitselector_businessunitselector",
+      "app_dashboard_businessunitselector_options",
+      "app_dashboard_cleardatabasebutton",
+      "app_dashboard_cleardatabasebutton_cleardatabasebutton",
+      "app_dashboard_cleardatabasebutton_state",
+      "app_dashboard_cleardatabasebuttonwithrefresh",
+      "app_dashboard_cleardatabasebuttonwithrefresh_cleardatabasebuttonwithrefresh",
+      "app_dashboard_globalforecastkpisbar",
+      "app_dashboard_globalforecastkpisbar_eur",
+      "app_dashboard_globalforecastkpisbar_fctotals",
+      "app_dashboard_globalforecastkpisbar_forecastkpicard",
+      "app_dashboard_globalforecastkpisbar_globalforecastkpisbar",
+      "app_dashboard_globalforecastkpisbar_hrs",
+      "app_dashboard_globalforecastkpisbar_pct",
+      "app_dashboard_page",
+      "app_dashboard_page_colormap",
+      "app_dashboard_page_dashboardpage",
+      "app_dashboard_page_navcards"
+    ],
+    "7": [
+      "app_api_upload_forecast_route",
+      "app_api_upload_forecast_route_forecastuploadresult",
+      "app_api_upload_forecast_route_forecastuploadstats",
+      "app_api_upload_forecast_route_name_stop",
+      "app_api_upload_forecast_route_namesimilarity",
+      "app_api_upload_forecast_route_nametokens",
+      "app_api_upload_forecast_route_num",
+      "app_api_upload_forecast_route_parseemployee",
+      "app_api_upload_forecast_route_parseengagement",
+      "app_api_upload_forecast_route_post",
+      "app_api_upload_forecast_route_s",
+      "app_api_upload_forecast_route_toexceldate",
+      "app_dashboard_uploadforecast",
+      "app_dashboard_uploadforecast_fmtnum",
+      "app_dashboard_uploadforecast_stat",
+      "app_dashboard_uploadforecast_statspanel",
+      "app_dashboard_uploadforecast_uploadforecast"
+    ],
+    "8": [
+      "app_api_upload_route",
+      "app_api_upload_route_conflictrow",
+      "app_api_upload_route_intraconflictgroup",
+      "app_api_upload_route_intraexpensegroup",
+      "app_api_upload_route_num",
+      "app_api_upload_route_post",
+      "app_api_upload_route_row",
+      "app_api_upload_route_s",
+      "app_api_upload_route_splitnameid",
+      "app_api_upload_route_todate",
+      "app_dashboard_uploadexcel",
+      "app_dashboard_uploadexcel_eur",
+      "app_dashboard_uploadexcel_fmtdate",
+      "app_dashboard_uploadexcel_hrs",
+      "app_dashboard_uploadexcel_stats",
+      "app_dashboard_uploadexcel_uploadexcel",
+      "app_dashboard_uploadexcel_uploadresult"
+    ],
+    "9": [
+      "app_dashboard_clientkpis",
+      "app_dashboard_clientkpis_clientkpis",
+      "app_dashboard_clientkpis_fetchclientkpis",
+      "app_dashboard_clientkpistable",
+      "app_dashboard_clientkpistable_clientkpi",
+      "app_dashboard_clientkpistable_clientkpistable",
+      "app_dashboard_clientkpistable_eur",
+      "app_dashboard_clientkpistable_hrs",
+      "app_dashboard_clientkpistable_pct",
+      "app_dashboard_clientkpistable_pctcolor",
+      "app_dashboard_clientkpistable_pctconsumed",
+      "app_dashboard_clientkpistable_pctconsumedcolor",
+      "app_dashboard_clientkpistable_remainingcolor",
+      "app_dashboard_clientkpistable_sortheader",
+      "app_dashboard_clientkpistable_sortkey",
+      "app_dashboard_scrollcell",
+      "app_dashboard_scrollcell_scrollcell"
+    ],
+    "10": [
+      "app_dashboard_clients_clearclientdatabutton",
+      "app_dashboard_clients_clearclientdatabutton_clearclientdatabutton",
+      "app_dashboard_clients_clearclientdatabutton_state",
+      "app_dashboard_clients_clientdashboard",
+      "app_dashboard_clients_clientdashboard_clientdashboard",
+      "app_dashboard_clients_clientdashboard_clientoption",
+      "app_dashboard_clients_clientengagementstable",
+      "app_dashboard_clients_clientengagementstable_clientengagementstable",
+      "app_dashboard_clients_clientengagementstable_engagementrow",
+      "app_dashboard_clients_clientengagementstable_eur",
+      "app_dashboard_clients_clientengagementstable_hrs",
+      "app_dashboard_clients_clientengagementstable_pct",
+      "app_dashboard_clients_clientengagementstable_pctcolor",
+      "app_dashboard_clients_clientengagementstable_pctconsumed",
+      "app_dashboard_clients_clientengagementstable_pctconsumedcolor",
+      "app_dashboard_clients_clientengagementstable_remainingcolor"
+    ],
+    "11": [
+      "any",
+      "scripts_load_forecast",
+      "scripts_load_forecast_load",
+      "scripts_load_forecast_num",
+      "scripts_load_forecast_parse_employee",
+      "scripts_load_forecast_parse_engagement",
+      "scripts_load_forecast_py_date",
+      "scripts_load_forecast_rationale_1",
+      "scripts_load_forecast_rationale_108",
+      "scripts_load_forecast_rationale_71",
+      "scripts_load_forecast_rationale_92",
+      "scripts_load_forecast_s",
+      "scripts_load_forecast_to_date"
+    ],
+    "12": [
+      "app_dashboard_employee_forecast_page",
+      "app_dashboard_employee_forecast_page_page",
+      "app_dashboard_employeeweekly",
+      "app_dashboard_employeeweekly_actualrow",
+      "app_dashboard_employeeweekly_employee",
+      "app_dashboard_employeeweekly_employeeweekly",
+      "app_dashboard_employeeweekly_flatrow",
+      "app_dashboard_employeeweekly_fmteur",
+      "app_dashboard_employeeweekly_fmth",
+      "app_dashboard_employeeweekly_fmtweek",
+      "app_dashboard_employeeweekly_forecastrow"
+    ],
+    "13": [
+      "app_dashboard_admin_adminpanel",
+      "app_dashboard_admin_adminpanel_clientrow",
+      "app_dashboard_admin_adminpanel_colorpicker",
+      "app_dashboard_admin_adminpanel_engagementrow",
+      "app_dashboard_admin_adminpanel_palette",
+      "app_dashboard_admin_adminpanel_section",
+      "app_dashboard_admin_adminpanel_toast",
+      "app_dashboard_admin_adminpanel_vendorrow",
+      "app_dashboard_admin_page",
+      "app_dashboard_admin_page_adminpage"
+    ],
+    "14": [
+      "app_dashboard_globalclientexpenseschart",
+      "app_dashboard_globalclientexpenseschart_colourfor",
+      "app_dashboard_globalclientexpenseschart_colours",
+      "app_dashboard_globalclientexpenseschart_customtooltip",
+      "app_dashboard_globalclientexpenseschart_eur",
+      "app_dashboard_globalclientexpenseschart_fmtmonth",
+      "app_dashboard_globalclientexpenseschart_globalclientexpenseschart",
+      "app_dashboard_globalclientexpenseschart_rawrow",
+      "app_dashboard_globalclientexpenseschart_ytickformatter"
+    ],
+    "15": [
+      "app_dashboard_globalquarterlyterchart",
+      "app_dashboard_globalquarterlyterchart_charttooltip",
+      "app_dashboard_globalquarterlyterchart_colours",
+      "app_dashboard_globalquarterlyterchart_eur",
+      "app_dashboard_globalquarterlyterchart_globalquarterlyterchart",
+      "app_dashboard_globalquarterlyterchart_keymeta",
+      "app_dashboard_globalquarterlyterchart_quarterlylegend",
+      "app_dashboard_globalquarterlyterchart_rawrow",
+      "app_dashboard_globalquarterlyterchart_ytickformatter"
+    ],
+    "16": [
+      "app_dashboard_globalterforecastchart",
+      "app_dashboard_globalterforecastchart_customtooltip",
+      "app_dashboard_globalterforecastchart_customxtick",
+      "app_dashboard_globalterforecastchart_eur",
+      "app_dashboard_globalterforecastchart_fmtmonth",
+      "app_dashboard_globalterforecastchart_globalterforecastchart",
+      "app_dashboard_globalterforecastchart_rawrow",
+      "app_dashboard_globalterforecastchart_tooltippayloadentry",
+      "app_dashboard_globalterforecastchart_ytickformatter"
+    ],
+    "17": [
+      "app_dashboard_globalvendorexpenseschart",
+      "app_dashboard_globalvendorexpenseschart_colourfor",
+      "app_dashboard_globalvendorexpenseschart_colours",
+      "app_dashboard_globalvendorexpenseschart_customtooltip",
+      "app_dashboard_globalvendorexpenseschart_eur",
+      "app_dashboard_globalvendorexpenseschart_fmtmonth",
+      "app_dashboard_globalvendorexpenseschart_globalvendorexpenseschart",
+      "app_dashboard_globalvendorexpenseschart_rawrow",
+      "app_dashboard_globalvendorexpenseschart_ytickformatter"
+    ],
+    "18": [
+      "scripts_load_time_expense",
+      "scripts_load_time_expense_load",
+      "scripts_load_time_expense_num",
+      "scripts_load_time_expense_py_date",
+      "scripts_load_time_expense_rationale_1",
+      "scripts_load_time_expense_rationale_37",
+      "scripts_load_time_expense_s",
+      "scripts_load_time_expense_split_name_id",
+      "scripts_load_time_expense_to_date"
+    ],
+    "19": [
+      "app_dashboard_admin_adminpanel_adminpanel",
+      "app_dashboard_engagementexpensesbyvendor",
+      "app_dashboard_engagementexpensesbyvendor_clientoption",
+      "app_dashboard_engagementexpensesbyvendor_engagementexpensesbyvendor",
+      "app_dashboard_engagementexpensesbyvendor_eur",
+      "app_dashboard_engagementexpensesbyvendor_eurdec",
+      "app_dashboard_engagementexpensesbyvendor_vendorexpense",
+      "lib_supabase_client_createclient"
+    ],
+    "20": [
+      "app_dashboard_budgetcell",
+      "app_dashboard_budgetcell_budgetcell",
+      "app_dashboard_budgetcell_eur",
+      "app_dashboard_budgetcell_parseamount",
+      "app_dashboard_statuscell",
+      "app_dashboard_statuscell_status",
+      "app_dashboard_statuscell_statuscell",
+      "lib_supabase_client"
+    ],
+    "21": [
+      "app_dashboard_clients_clientansrchart",
+      "app_dashboard_clients_clientansrchart_clientansrchart",
+      "app_dashboard_clients_clientansrchart_colourfor",
+      "app_dashboard_clients_clientansrchart_colours",
+      "app_dashboard_clients_clientansrchart_customtooltip",
+      "app_dashboard_clients_clientansrchart_eur",
+      "app_dashboard_clients_clientansrchart_fmtmonth",
+      "app_dashboard_clients_clientansrchart_rawrow"
+    ],
+    "22": [
+      "app_dashboard_clients_clientvendorexpenses",
+      "app_dashboard_clients_clientvendorexpenses_clientvendorexpenses",
+      "app_dashboard_clients_clientvendorexpenses_eur",
+      "app_dashboard_clients_clientvendorexpenses_eurint",
+      "app_dashboard_clients_clientvendorexpenses_fmtdate",
+      "app_dashboard_clients_clientvendorexpenses_invoiceline",
+      "app_dashboard_clients_clientvendorexpenses_rowkey",
+      "app_dashboard_clients_clientvendorexpenses_vendorrow"
+    ],
+    "23": [
+      "app_dashboard_clients_clientvendorexpenseschart",
+      "app_dashboard_clients_clientvendorexpenseschart_clientvendorexpenseschart",
+      "app_dashboard_clients_clientvendorexpenseschart_colourfor",
+      "app_dashboard_clients_clientvendorexpenseschart_colours",
+      "app_dashboard_clients_clientvendorexpenseschart_customtooltip",
+      "app_dashboard_clients_clientvendorexpenseschart_eur",
+      "app_dashboard_clients_clientvendorexpenseschart_fmtmonth",
+      "app_dashboard_clients_clientvendorexpenseschart_rawrow"
+    ],
+    "24": [
+      "app_dashboard_globalterbreakdownchart",
+      "app_dashboard_globalterbreakdownchart_customtooltip",
+      "app_dashboard_globalterbreakdownchart_eur",
+      "app_dashboard_globalterbreakdownchart_fmtmonth",
+      "app_dashboard_globalterbreakdownchart_globalterbreakdownchart",
+      "app_dashboard_globalterbreakdownchart_rawrow",
+      "app_dashboard_globalterbreakdownchart_series",
+      "app_dashboard_globalterbreakdownchart_ytickformatter"
+    ],
+    "25": [
+      "app_dashboard_globalterchart",
+      "app_dashboard_globalterchart_colourfor",
+      "app_dashboard_globalterchart_colours",
+      "app_dashboard_globalterchart_customtooltip",
+      "app_dashboard_globalterchart_eur",
+      "app_dashboard_globalterchart_fmtmonth",
+      "app_dashboard_globalterchart_globalterchart",
+      "app_dashboard_globalterchart_rawrow"
+    ],
+    "26": [
+      "app_dashboard_clients_clientweeklychart",
+      "app_dashboard_clients_clientweeklychart_clientweeklychart",
+      "app_dashboard_clients_clientweeklychart_customtooltip",
+      "app_dashboard_clients_clientweeklychart_eur",
+      "app_dashboard_clients_clientweeklychart_fmth",
+      "app_dashboard_clients_clientweeklychart_fmtweek",
+      "app_dashboard_clients_clientweeklychart_weekrow"
+    ],
+    "27": [
+      "lib_supabase_middleware",
+      "lib_supabase_middleware_rationale_29",
+      "lib_supabase_middleware_updatesession",
+      "middleware",
+      "middleware_config",
+      "middleware_middleware"
+    ],
+    "28": [
+      "app_layout",
+      "app_layout_metadata",
+      "app_layout_rootlayout"
+    ],
+    "29": [
+      "eslintrc",
+      "eslintrc_extends"
+    ],
+    "30": [
+      "next_config",
+      "next_config_nextconfig"
+    ],
+    "31": [
+      "postcss_config",
+      "postcss_config_config"
+    ],
+    "32": [
+      "tailwind_config",
+      "tailwind_config_config"
+    ]
+  },
+  "cohesion": {
+    "0": 0.10526315789473684,
+    "1": 0.07142857142857142,
+    "2": 0.13852813852813853,
+    "3": 0.13852813852813853,
+    "4": 0.14285714285714285,
+    "5": 0.1,
+    "6": 0.12280701754385964,
+    "7": 0.18382352941176472,
+    "8": 0.17647058823529413,
+    "9": 0.17647058823529413,
+    "10": 0.175,
+    "11": 0.24358974358974358,
+    "12": 0.2,
+    "13": 0.2,
+    "14": 0.2777777777777778,
+    "15": 0.2222222222222222,
+    "16": 0.2777777777777778,
+    "17": 0.2777777777777778,
+    "18": 0.3333333333333333,
+    "19": 0.2857142857142857,
+    "20": 0.25,
+    "21": 0.32142857142857145,
+    "22": 0.32142857142857145,
+    "23": 0.32142857142857145,
+    "24": 0.2857142857142857,
+    "25": 0.2857142857142857,
+    "26": 0.3333333333333333,
+    "27": 0.4666666666666667,
+    "28": 0.6666666666666666,
+    "29": 1.0,
+    "30": 1.0,
+    "31": 1.0,
+    "32": 1.0
+  },
+  "gods": [
+    {
+      "id": "lib_supabase_client_createclient",
+      "label": "createClient()",
+      "degree": 36
+    },
+    {
+      "id": "lib_supabase_server_createclient",
+      "label": "createClient()",
+      "degree": 35
+    },
+    {
+      "id": "tsconfig_compileroptions",
+      "label": "compilerOptions",
+      "degree": 16
+    },
+    {
+      "id": "lib_db_createdb",
+      "label": "createDb()",
+      "degree": 9
+    },
+    {
+      "id": "app_api_upload_forecast_route_post",
+      "label": "POST()",
+      "degree": 8
+    },
+    {
+      "id": "app_api_upload_route_post",
+      "label": "POST()",
+      "degree": 8
+    },
+    {
+      "id": "app_dashboard_clientmonthlykpis_clientmonthlykpis",
+      "label": "ClientMonthlyKpis()",
+      "degree": 8
+    },
+    {
+      "id": "app_dashboard_projectmonthlykpis_projectmonthlykpis",
+      "label": "ProjectMonthlyKpis()",
+      "degree": 8
+    },
+    {
+      "id": "app_dashboard_clients_clientengagementstable_clientengagementstable",
+      "label": "ClientEngagementsTable()",
+      "degree": 8
+    },
+    {
+      "id": "app_dashboard_projectkpistable_projectkpistable",
+      "label": "ProjectKpisTable()",
+      "degree": 7
+    }
+  ],
+  "surprises": [
+    {
+      "source": "GlobalQuarterlyTerChart()",
+      "target": "createClient()",
+      "source_files": [
+        "app/dashboard/GlobalQuarterlyTerChart.tsx",
+        "lib/supabase/client.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "connects across different repos/directories; bridges separate communities; peripheral node `GlobalQuarterlyTerChart()` unexpectedly reaches hub `createClient()`"
+    },
+    {
+      "source": "GlobalTerBreakdownChart()",
+      "target": "createClient()",
+      "source_files": [
+        "app/dashboard/GlobalTerBreakdownChart.tsx",
+        "lib/supabase/client.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "connects across different repos/directories; bridges separate communities; peripheral node `GlobalTerBreakdownChart()` unexpectedly reaches hub `createClient()`"
+    },
+    {
+      "source": "GlobalTerChart()",
+      "target": "createClient()",
+      "source_files": [
+        "app/dashboard/GlobalTerChart.tsx",
+        "lib/supabase/client.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "connects across different repos/directories; bridges separate communities; peripheral node `GlobalTerChart()` unexpectedly reaches hub `createClient()`"
+    },
+    {
+      "source": "GlobalTerForecastChart()",
+      "target": "createClient()",
+      "source_files": [
+        "app/dashboard/GlobalTerForecastChart.tsx",
+        "lib/supabase/client.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "connects across different repos/directories; bridges separate communities; peripheral node `GlobalTerForecastChart()` unexpectedly reaches hub `createClient()`"
+    },
+    {
+      "source": "ClientWeeklyChart()",
+      "target": "createClient()",
+      "source_files": [
+        "app/dashboard/clients/ClientWeeklyChart.tsx",
+        "lib/supabase/client.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "connects across different repos/directories; bridges separate communities; peripheral node `ClientWeeklyChart()` unexpectedly reaches hub `createClient()`"
+    }
+  ],
+  "questions": [
+    {
+      "type": "bridge_node",
+      "question": "Why does `createClient()` connect `createClient` to `ProjectKpisTable.tsx`, `page.tsx`, `route.ts`, `route.ts`, `ClientKpisTable.tsx`?",
+      "why": "High betweenness centrality (0.205) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `createClient()` connect `createClient` to `ClientMonthlyKpis.tsx`, `ProjectMonthlyKpis.tsx`, `route.ts`, `ClientEngagementsTable.tsx`, `EmployeeWeekly.tsx`, `AdminPanel.tsx`, `GlobalClientExpensesChart.tsx`, `GlobalQuarterlyTerChart.tsx`, `GlobalTerForecastChart.tsx`, `GlobalVendorExpensesChart.tsx`, `client.ts`, `ClientAnsrChart.tsx`, `ClientVendorExpenses.tsx`, `ClientVendorExpensesChart.tsx`, `GlobalTerBreakdownChart.tsx`, `GlobalTerChart.tsx`, `ClientWeeklyChart.tsx`?",
+      "why": "High betweenness centrality (0.201) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `xlsx` connect `devDependencies` to `route.ts`, `route.ts`?",
+      "why": "High betweenness centrality (0.107) - this node is a cross-community bridge."
+    },
+    {
+      "type": "isolated_nodes",
+      "question": "What connects `extends`, `Row`, `eur` to the rest of the system?",
+      "why": "150 weakly-connected nodes found - possible documentation gaps or missing edges."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `createClient` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.10526315789473684 - nodes in this community are weakly interconnected."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `devDependencies` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.07142857142857142 - nodes in this community are weakly interconnected."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `ClientMonthlyKpis.tsx` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.13852813852813853 - nodes in this community are weakly interconnected."
+    }
+  ]
+}
