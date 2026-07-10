@@ -18,6 +18,16 @@ type DetailRow = {
   ansr_revenue: number;
 };
 
+type ForecastRow = {
+  employee_gui: string;
+  employee_name: string | null;
+  engagement_id: string;
+  engagement_name: string | null;
+  week_key: string;
+  effective_hours: number | null;
+  billable_hours: number | null;
+};
+
 type FlatRow =
   | { kind: "employee"; empGui: string; empName: string }
   | { kind: "engagement"; empGui: string; engId: string; engName: string; hasBreakdown: boolean }
@@ -49,6 +59,7 @@ export default function EmployeeWeekly({ fiscalYear }: { fiscalYear?: number }) 
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [rows, setRows] = useState<DetailRow[]>([]);
+  const [forecastRows, setForecastRows] = useState<ForecastRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [dropOpen, setDropOpen] = useState(false);
   const dropRef = useRef<HTMLDivElement>(null);
@@ -71,14 +82,18 @@ export default function EmployeeWeekly({ fiscalYear }: { fiscalYear?: number }) 
     });
   }, [supabase]);
 
-  // Fetch detail when selection or FY changes
+  // Fetch real + forecast when selection or FY changes
   useEffect(() => {
-    if (selected.size === 0) { setRows([]); return; }
+    if (selected.size === 0) { setRows([]); setForecastRows([]); return; }
     setLoading(true);
     const params: Record<string, unknown> = { p_employee_guis: [...selected] };
     if (fiscalYear) params.p_fiscal_year = fiscalYear;
-    supabase.rpc("get_employee_weekly_detail", params).then(({ data }) => {
-      setRows((data as DetailRow[]) ?? []);
+    Promise.all([
+      supabase.rpc("get_employee_weekly_detail", params),
+      supabase.rpc("get_employee_forecast_detail", params),
+    ]).then(([{ data: real }, { data: forecast }]) => {
+      setRows((real as DetailRow[]) ?? []);
+      setForecastRows((forecast as ForecastRow[]) ?? []);
       setLoading(false);
     });
   }, [selected, fiscalYear, supabase]);
@@ -94,8 +109,8 @@ export default function EmployeeWeekly({ fiscalYear }: { fiscalYear?: number }) 
   // ─── Derived data ─────────────────────────────────────────────────────────
 
   const weeks = useMemo(
-    () => [...new Set(rows.map((r) => r.week_key))].sort(),
-    [rows]
+    () => [...new Set([...rows.map((r) => r.week_key), ...forecastRows.map((r) => r.week_key)])].sort(),
+    [rows, forecastRows]
   );
 
   // employee → engagement → rows
@@ -139,6 +154,52 @@ export default function EmployeeWeekly({ fiscalYear }: { fiscalYear?: number }) 
     return m;
   }, [rows]);
 
+  // Forecast: empGui|weekKey → effective_hours del PRIMER engagement (métrica de empleado, no se suma)
+  const forecastEmpEffectiveMap = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of forecastRows) {
+      const k = `${r.employee_gui}|${r.week_key}`;
+      if (!m.has(k) && r.effective_hours != null) m.set(k, r.effective_hours);
+    }
+    return m;
+  }, [forecastRows]);
+
+  // Forecast: empGui|engId|weekKey → billable_hours (métrica de engagement)
+  const forecastEngBillableMap = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of forecastRows) {
+      const k = `${r.employee_gui}|${r.engagement_id}|${r.week_key}`;
+      if (r.billable_hours != null) m.set(k, r.billable_hours);
+    }
+    return m;
+  }, [forecastRows]);
+
+  // Totales forecast para columna "Total"
+  const forecastEmpEffectiveTot = useMemo(() => {
+    const m = new Map<string, number>();
+    const seen = new Map<string, Set<string>>();
+    for (const r of forecastRows) {
+      if (r.effective_hours == null) continue;
+      const ws = seen.get(r.employee_gui) ?? new Set<string>();
+      if (!ws.has(r.week_key)) {
+        ws.add(r.week_key);
+        seen.set(r.employee_gui, ws);
+        m.set(r.employee_gui, (m.get(r.employee_gui) ?? 0) + r.effective_hours);
+      }
+    }
+    return m;
+  }, [forecastRows]);
+
+  const forecastEngBillableTot = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of forecastRows) {
+      if (r.billable_hours == null) continue;
+      const k = `${r.employee_gui}|${r.engagement_id}`;
+      m.set(k, (m.get(k) ?? 0) + r.billable_hours);
+    }
+    return m;
+  }, [forecastRows]);
+
   const empTot = useMemo(() => {
     const m = new Map<string, { h: number; a: number }>();
     for (const r of rows) {
@@ -168,27 +229,54 @@ export default function EmployeeWeekly({ fiscalYear }: { fiscalYear?: number }) 
     return m;
   }, [rows]);
 
-  // Flat list of table rows (for clean render without nested maps)
+  // Flat list of table rows — incluye empleados/engagements sólo en forecast
   const flatRows = useMemo<FlatRow[]>(() => {
     const result: FlatRow[] = [];
-    for (const [empGui, engMap] of tree) {
+    const allEmpGuids = new Set([
+      ...[...tree.keys()],
+      ...forecastRows.map((r) => r.employee_gui),
+    ]);
+    for (const empGui of allEmpGuids) {
       const empName =
-        rows.find((r) => r.employee_gui === empGui)?.employee_name ?? empGui;
+        rows.find((r) => r.employee_gui === empGui)?.employee_name ??
+        forecastRows.find((r) => r.employee_gui === empGui)?.employee_name ??
+        empGui;
       result.push({ kind: "employee", empGui, empName });
-      for (const [engId, dRows] of engMap) {
-        const engName = dRows[0]?.engagement_name ?? engId;
-        const acts = [...new Set(dRows.map((r) => r.activity_code ?? ""))];
-        const hasBreakdown = acts.length > 1;
-        result.push({ kind: "engagement", empGui, engId, engName, hasBreakdown });
-        if (hasBreakdown) {
-          for (const act of acts) {
-            result.push({ kind: "activity", empGui, engId, act });
+
+      const seenEngIds = new Set<string>();
+
+      // Engagements de imputaciones
+      const engMap = tree.get(empGui);
+      if (engMap) {
+        for (const [engId, dRows] of engMap) {
+          seenEngIds.add(engId);
+          const engName = dRows[0]?.engagement_name ?? engId;
+          const acts = [...new Set(dRows.map((r) => r.activity_code ?? ""))];
+          const hasBreakdown = acts.length > 1;
+          result.push({ kind: "engagement", empGui, engId, engName, hasBreakdown });
+          if (hasBreakdown) {
+            for (const act of acts) {
+              result.push({ kind: "activity", empGui, engId, act });
+            }
           }
         }
       }
+
+      // Engagements sólo en forecast
+      for (const r of forecastRows) {
+        if (r.employee_gui !== empGui || seenEngIds.has(r.engagement_id)) continue;
+        seenEngIds.add(r.engagement_id);
+        result.push({
+          kind: "engagement",
+          empGui,
+          engId: r.engagement_id,
+          engName: r.engagement_name ?? r.engagement_id,
+          hasBreakdown: false,
+        });
+      }
     }
     return result;
-  }, [tree, rows]);
+  }, [tree, rows, forecastRows]);
 
   const selectedNames = employees
     .filter((e) => selected.has(e.employee_gui))
@@ -276,7 +364,7 @@ export default function EmployeeWeekly({ fiscalYear }: { fiscalYear?: number }) 
         <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
           <table className="text-xs border-collapse min-w-max">
             <thead>
-              {/* Week headers */}
+              {/* Fila 1: semanas */}
               <tr className="bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
                 <th className="sticky left-0 z-10 bg-gray-100 dark:bg-gray-800 px-4 py-2 text-left font-semibold min-w-[300px] border-r border-b border-gray-200 dark:border-gray-700">
                   Empleado / Engagement
@@ -284,37 +372,75 @@ export default function EmployeeWeekly({ fiscalYear }: { fiscalYear?: number }) 
                 {weeks.map((wk) => (
                   <th
                     key={wk}
-                    colSpan={2}
+                    colSpan={4}
                     className="px-3 py-2 text-center font-medium border-l border-b border-gray-200 dark:border-gray-700 whitespace-nowrap"
                   >
                     {fmtWeek(wk)}
                   </th>
                 ))}
                 <th
-                  colSpan={2}
+                  colSpan={4}
                   className="px-3 py-2 text-center font-semibold border-l border-b border-gray-200 dark:border-gray-700 bg-gray-200 dark:bg-gray-700 whitespace-nowrap"
                 >
                   Total
                 </th>
               </tr>
-              {/* h / ANSR sub-headers */}
+              {/* Fila 2: grupos Imputaciones / Forecast */}
+              <tr className="bg-gray-50 dark:bg-gray-900 text-[10px] uppercase tracking-wide text-gray-400">
+                <th className="sticky left-0 z-10 bg-gray-50 dark:bg-gray-900 border-r border-b border-gray-200 dark:border-gray-700" />
+                {weeks.map((wk) => (
+                  <React.Fragment key={wk}>
+                    <th
+                      colSpan={2}
+                      className="px-2 py-0.5 text-center border-l border-b border-gray-200 dark:border-gray-700 text-gray-400"
+                    >
+                      Imput.
+                    </th>
+                    <th
+                      colSpan={2}
+                      className="px-2 py-0.5 text-center border-b border-gray-200 dark:border-gray-700 text-purple-400 dark:text-purple-500"
+                    >
+                      Forecast
+                    </th>
+                  </React.Fragment>
+                ))}
+                <th colSpan={2} className="px-2 py-0.5 text-center border-l border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 text-gray-400">
+                  Imput.
+                </th>
+                <th colSpan={2} className="px-2 py-0.5 text-center border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 text-purple-400 dark:text-purple-500">
+                  Forecast
+                </th>
+              </tr>
+              {/* Fila 3: sub-columnas h / ANSR / h.ef. / h.fac. */}
               <tr className="bg-gray-50 dark:bg-gray-900 text-gray-400">
                 <th className="sticky left-0 z-10 bg-gray-50 dark:bg-gray-900 border-r border-b border-gray-200 dark:border-gray-700" />
                 {weeks.map((wk) => (
                   <React.Fragment key={wk}>
-                    <th className="px-2 py-1 text-right font-normal border-l border-b border-gray-200 dark:border-gray-700 w-16">
+                    <th className="px-2 py-1 text-right font-normal border-l border-b border-gray-200 dark:border-gray-700 w-14">
                       h
                     </th>
-                    <th className="px-2 py-1 text-right font-normal border-b border-gray-200 dark:border-gray-700 w-24">
+                    <th className="px-2 py-1 text-right font-normal border-b border-gray-200 dark:border-gray-700 w-22">
                       ANSR
+                    </th>
+                    <th className="px-2 py-1 text-right font-normal border-b border-gray-200 dark:border-gray-700 w-14 text-purple-400 dark:text-purple-500">
+                      h.ef.
+                    </th>
+                    <th className="px-2 py-1 text-right font-normal border-b border-gray-200 dark:border-gray-700 w-14 text-purple-400 dark:text-purple-500">
+                      h.fac.
                     </th>
                   </React.Fragment>
                 ))}
-                <th className="px-2 py-1 text-right font-normal border-l border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 w-16">
+                <th className="px-2 py-1 text-right font-normal border-l border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 w-14">
                   h
                 </th>
-                <th className="px-2 py-1 text-right font-normal border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 w-24">
+                <th className="px-2 py-1 text-right font-normal border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 w-22">
                   ANSR
+                </th>
+                <th className="px-2 py-1 text-right font-normal border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 w-14 text-purple-400 dark:text-purple-500">
+                  h.ef.
+                </th>
+                <th className="px-2 py-1 text-right font-normal border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 w-14 text-purple-400 dark:text-purple-500">
+                  h.fac.
                 </th>
               </tr>
             </thead>
@@ -323,6 +449,7 @@ export default function EmployeeWeekly({ fiscalYear }: { fiscalYear?: number }) 
                 /* ── Employee total row ── */
                 if (row.kind === "employee") {
                   const tot = empTot.get(row.empGui);
+                  const effTot = forecastEmpEffectiveTot.get(row.empGui);
                   return (
                     <tr
                       key={`emp-${row.empGui}`}
@@ -338,6 +465,7 @@ export default function EmployeeWeekly({ fiscalYear }: { fiscalYear?: number }) 
                       </td>
                       {weeks.map((wk) => {
                         const t = empWeekTot.get(`${row.empGui}|${wk}`);
+                        const eff = forecastEmpEffectiveMap.get(`${row.empGui}|${wk}`);
                         return (
                           <React.Fragment key={wk}>
                             <td className="px-2 py-2 text-right tabular-nums border-l border-blue-100 dark:border-blue-900 text-blue-700 dark:text-blue-400">
@@ -346,6 +474,10 @@ export default function EmployeeWeekly({ fiscalYear }: { fiscalYear?: number }) 
                             <td className="px-2 py-2 text-right tabular-nums text-blue-600 dark:text-blue-500">
                               {t ? fmtEur.format(t.a) : ""}
                             </td>
+                            <td className="px-2 py-2 text-right tabular-nums text-purple-600 dark:text-purple-400 font-semibold">
+                              {eff != null ? fmtH.format(eff) : ""}
+                            </td>
+                            <td className="px-2 py-2 text-right tabular-nums" />
                           </React.Fragment>
                         );
                       })}
@@ -355,6 +487,10 @@ export default function EmployeeWeekly({ fiscalYear }: { fiscalYear?: number }) 
                       <td className="px-2 py-2 text-right tabular-nums bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400">
                         {tot ? fmtEur.format(tot.a) : ""}
                       </td>
+                      <td className="px-2 py-2 text-right tabular-nums bg-blue-100 dark:bg-blue-900/40 text-purple-600 dark:text-purple-400">
+                        {effTot != null ? fmtH.format(effTot) : ""}
+                      </td>
+                      <td className="px-2 py-2 text-right tabular-nums bg-blue-100 dark:bg-blue-900/40" />
                     </tr>
                   );
                 }
@@ -362,6 +498,7 @@ export default function EmployeeWeekly({ fiscalYear }: { fiscalYear?: number }) 
                 /* ── Engagement subtotal row ── */
                 if (row.kind === "engagement") {
                   const tot = engTot.get(`${row.empGui}|${row.engId}`);
+                  const billTot = forecastEngBillableTot.get(`${row.empGui}|${row.engId}`);
                   return (
                     <tr
                       key={`eng-${row.empGui}-${row.engId}`}
@@ -377,6 +514,7 @@ export default function EmployeeWeekly({ fiscalYear }: { fiscalYear?: number }) 
                       </td>
                       {weeks.map((wk) => {
                         const t = engWeekTot.get(`${row.empGui}|${row.engId}|${wk}`);
+                        const bill = forecastEngBillableMap.get(`${row.empGui}|${row.engId}|${wk}`);
                         return (
                           <React.Fragment key={wk}>
                             <td className="px-2 py-1.5 text-right tabular-nums border-l border-gray-200 dark:border-gray-700 font-medium">
@@ -384,6 +522,10 @@ export default function EmployeeWeekly({ fiscalYear }: { fiscalYear?: number }) 
                             </td>
                             <td className="px-2 py-1.5 text-right tabular-nums font-medium text-gray-600 dark:text-gray-400">
                               {t ? fmtEur.format(t.a) : ""}
+                            </td>
+                            <td className="px-2 py-1.5 text-right tabular-nums" />
+                            <td className="px-2 py-1.5 text-right tabular-nums text-purple-600 dark:text-purple-400 font-medium">
+                              {bill != null ? fmtH.format(bill) : ""}
                             </td>
                           </React.Fragment>
                         );
@@ -393,6 +535,10 @@ export default function EmployeeWeekly({ fiscalYear }: { fiscalYear?: number }) 
                       </td>
                       <td className="px-2 py-1.5 text-right tabular-nums bg-gray-100 dark:bg-gray-800 font-semibold text-gray-600 dark:text-gray-400">
                         {tot ? fmtEur.format(tot.a) : ""}
+                      </td>
+                      <td className="px-2 py-1.5 text-right tabular-nums bg-gray-100 dark:bg-gray-800" />
+                      <td className="px-2 py-1.5 text-right tabular-nums bg-gray-100 dark:bg-gray-800 font-semibold text-purple-600 dark:text-purple-400">
+                        {billTot != null ? fmtH.format(billTot) : ""}
                       </td>
                     </tr>
                   );
@@ -420,6 +566,8 @@ export default function EmployeeWeekly({ fiscalYear }: { fiscalYear?: number }) 
                           <td className="px-2 py-1 text-right tabular-nums text-gray-400">
                             {d ? fmtEur.format(d.ansr_revenue) : ""}
                           </td>
+                          <td className="px-2 py-1" />
+                          <td className="px-2 py-1" />
                         </React.Fragment>
                       );
                     })}
@@ -429,6 +577,8 @@ export default function EmployeeWeekly({ fiscalYear }: { fiscalYear?: number }) 
                     <td className="px-2 py-1 text-right tabular-nums bg-gray-50 dark:bg-gray-800/30 text-gray-400">
                       {tot ? fmtEur.format(tot.a) : ""}
                     </td>
+                    <td className="px-2 py-1 bg-gray-50 dark:bg-gray-800/30" />
+                    <td className="px-2 py-1 bg-gray-50 dark:bg-gray-800/30" />
                   </tr>
                 );
               })}
@@ -437,7 +587,7 @@ export default function EmployeeWeekly({ fiscalYear }: { fiscalYear?: number }) 
         </div>
       )}
 
-      {selected.size > 0 && !loading && rows.length === 0 && (
+      {selected.size > 0 && !loading && rows.length === 0 && forecastRows.length === 0 && (
         <p className="text-sm text-gray-500">
           No hay imputaciones para los empleados seleccionados.
         </p>

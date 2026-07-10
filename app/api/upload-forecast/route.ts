@@ -81,14 +81,24 @@ function toExcelDate(v: unknown): string | null {
 
 /**
  * Extrae (nombre, GUID) del texto de la columna E.
- * Formato esperado: "APELLIDO, NOMBRE GUID" o "APELLIDO, NOMBRE – GUID"
- * El GUID es el último token alfanumérico de ≥4 caracteres.
+ * Formatos soportados:
+ *   - "APELLIDO, NOMBRE GUID"   → típico Mercury con GUID al final
+ *   - "APELLIDO, NOMBRE – GUID"
+ *   - "APELLIDO, NOMBRE"        → sin GUID (sólo nombre)
+ *
+ * Un GUID real contiene al menos un dígito (p.ej. "ABC123", "JG001").
+ * Si el último token es puramente alfabético se trata como parte del nombre,
+ * no como GUID, evitando confundir el nombre de pila con un identificador.
  */
 function parseEmployee(cell: string | null): [string | null, string | null] {
   if (!cell) return [null, null];
   const str = cell.trim();
+  // Intenta separar el GUID al final: debe contener al menos un dígito
   const m = str.match(/^(.*?)[\s\-–]+([A-Za-z0-9]{4,})\s*$/);
-  if (m) return [m[1].trim(), m[2].trim()];
+  if (m && /\d/.test(m[2])) {
+    return [m[1].trim() || null, m[2].trim()];
+  }
+  // Sin GUID reconocible → todo es el nombre (ej. "García, Juan")
   return [str, null];
 }
 

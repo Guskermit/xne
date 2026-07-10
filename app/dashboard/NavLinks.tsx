@@ -1,16 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 
 const links = [
   { href: "/dashboard/clients", label: "Clientes" },
   { href: "/dashboard/engagements", label: "Engagements" },
+  { href: "/dashboard/employee-forecast", label: "Forecast" },
   { href: "/dashboard/evolution", label: "Evolución FY" },
 ];
 
 export default function NavLinks() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const fy = searchParams.get("fy");
+
+  // Preserva el parámetro ?fy= al navegar entre páginas
+  function buildHref(base: string) {
+    if (!fy) return base;
+    return `${base}?fy=${fy}`;
+  }
 
   return (
     <nav className="flex items-center gap-1 text-sm font-medium">
@@ -19,7 +28,7 @@ export default function NavLinks() {
         return (
           <Link
             key={href}
-            href={href}
+            href={buildHref(href)}
             className={`rounded-md px-3 py-1.5 transition-colors ${
               active
                 ? "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300"

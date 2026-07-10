@@ -14,34 +14,36 @@ export default function FiscalYearSelector({ years }: Props) {
 
   function update(key: string, val: string | null) {
     const next = new URLSearchParams(params.toString());
-    if (val) {
-      next.set(key, val);
-    } else {
-      next.delete(key);
-    }
+    if (val) next.set(key, val);
+    else next.delete(key);
     router.push(`?${next.toString()}`);
   }
 
   if (years.length === 0) return null;
 
+  const options = [{ value: "", label: "Todos" }, ...years.map((y) => ({ value: String(y), label: `FY${y}` }))];
+
   return (
     <div className="flex items-center gap-3 flex-wrap">
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
-          Fiscal year:
-        </span>
-        <select
-          value={current}
-          onChange={(e) => update("fy", e.target.value || null)}
-          className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-1.5 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">Todos</option>
-          {years.map((y) => (
-            <option key={y} value={String(y)}>
-              FY{y}
-            </option>
-          ))}
-        </select>
+      {/* Selector tipo botones — igual que BusinessUnitSelector */}
+      <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden text-sm">
+        {options.map((opt) => {
+          const active = current === opt.value;
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => update("fy", opt.value || null)}
+              className={`px-4 py-1.5 font-medium transition-colors whitespace-nowrap ${
+                active
+                  ? "bg-blue-600 text-white"
+                  : "bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+              }`}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
       </div>
 
       <label className="flex items-center gap-2 cursor-pointer select-none">
